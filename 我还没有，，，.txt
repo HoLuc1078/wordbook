@@ -1,0 +1,2 @@
+1.支持单条消息删除
+2.markdown、LaTeX 渲染

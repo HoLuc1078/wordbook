@@ -11,6 +11,10 @@
         <header>
             <h1>📚 英语单词本</h1>
             <p>记录和复习你的英语单词</p>
+            <div id="userStatus" class="user-status">
+                <span id="userInfo"></span>
+                <button id="loginBtn" class="login-btn">登录</button>
+            </div>
         </header>
 
         <!-- 单词输入区域 -->
@@ -42,6 +46,77 @@
                 <span class="close-btn">&times;</span>
                 <div id="modalBody">
                     <!-- 动态内容 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 登录/注册弹窗 -->
+        <div id="loginModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <span class="close-btn">&times;</span>
+                <div id="loginModalBody">
+                    <div class="auth-tabs">
+                        <button class="tab-btn active" onclick="switchTab('login')">登录</button>
+                        <button class="tab-btn" onclick="switchTab('register')">注册</button>
+                    </div>
+                    <div id="loginForm">
+                        <div class="form-group">
+                            <label>用户名：</label>
+                            <input type="text" id="loginUsername" class="form-input" placeholder="输入用户名">
+                        </div>
+                        <div class="form-group">
+                            <label>密码（可选）：</label>
+                            <input type="password" id="loginPassword" class="form-input" placeholder="如果设置了密码，请填写">
+                            <small style="color: var(--text-light);">如果用户未设置密码，可以直接登录</small>
+                        </div>
+                        <button class="save-btn" onclick="handleLogin()">登录</button>
+                    </div>
+                    <div id="registerForm" style="display: none;">
+                        <div class="form-group">
+                            <label>用户名：</label>
+                            <input type="text" id="registerUsername" class="form-input" placeholder="输入用户名（至少3个字符）">
+                        </div>
+                        <div class="form-group">
+                            <label>密码（可选）：</label>
+                            <input type="password" id="registerPassword" class="form-input" placeholder="设置密码（可选）">
+                            <small style="color: var(--text-light);">如果不需要密码，可以直接注册</small>
+                        </div>
+                        <button class="save-btn" onclick="handleRegister()">注册</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI 聊天按钮 -->
+        <button id="aiChatBtn" class="ai-chat-btn" onclick="toggleAIChat()">🤖</button>
+
+        <!-- AI 聊天窗口 -->
+        <div id="aiChatModal" class="modal" style="display: none;">
+            <div class="modal-content chat-content">
+                <span class="close-btn">&times;</span>
+                <div class="chat-header">
+                    <h3>与 LongCat AI 对话</h3>
+                    <div class="chat-controls">
+                        <select id="aiModelSelect" class="model-select" onchange="changeAIModel()">
+                            <option value="LongCat-Flash-Chat">LongCat-Flash-Chat (高性能对话)</option>
+                            <option value="LongCat-Flash-Chat-2602-Exp">LongCat-Flash-Chat-2602-Exp (实验版对话)</option>
+                            <option value="LongCat-Flash-Thinking">LongCat-Flash-Thinking (深度思考)</option>
+                            <option value="LongCat-Flash-Thinking-2601">LongCat-Flash-Thinking-2601 (升级版思考)</option>
+                            <option value="LongCat-Flash-Omni-2603">LongCat-Flash-Omni-2603 (多模态)</option>
+                            <option value="LongCat-Flash-Lite" selected>LongCat-Flash-Lite (高效轻量)</option>
+                            <option value="LongCat-2.0-Preview">LongCat-2.0-Preview (高性能Agentic)</option>
+                        </select>
+                        <button class="clear-btn" onclick="clearChatHistory()">清空记录</button>
+                    </div>
+                </div>
+                <div id="chatMessages" class="chat-messages">
+                    <div class="chat-welcome">
+                        <p>你好！我是 LongCat AI，有什么可以帮助你的吗？</p>
+                    </div>
+                </div>
+                <div class="chat-input-area">
+                    <input type="text" id="chatInput" placeholder="输入消息..." class="chat-input" onkeypress="handleChatKeyPress(event)">
+                    <button class="send-btn" onclick="sendChatMessage()">发送</button>
                 </div>
             </div>
         </div>
