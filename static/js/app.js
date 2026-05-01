@@ -7,6 +7,92 @@ const API_BASE_URL = '/api';
 let wordsCache = []; // 缓存单词列表
 let currentUser = null; // 当前登录用户
 
+// 动态加载必要的库
+function loadLibraries() {
+    return new Promise((resolve) => {
+        // Load KaTeX if not already loaded
+        if (!window.katex) {
+            const katexScript = document.createElement('script');
+            katexScript.src = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js';
+            katexScript.onload = () => {
+                if (window.katex && window.marked) resolve();
+            };
+            document.head.appendChild(katexScript);
+        }
+
+        // Load marked if not already loaded
+        if (!window.marked) {
+            const markedScript = document.createElement('script');
+            markedScript.src = 'https://cdn.jsdelivr.net/npm/marked/marked.min.js';
+            markedScript.onload = () => {
+                marked.setOptions({
+                    breaks: true,
+                    gfm: true,
+                    headerIds: false,
+                    mangle: false
+                });
+                if (window.katex && window.marked) resolve();
+            };
+            document.head.appendChild(markedScript);
+        }
+
+        // If both already loaded, resolve immediately
+        if (window.katex && window.marked) {
+            resolve();
+        }
+    });
+}
+
+/**
+ * 渲染消息内容（支持Markdown和LaTeX）
+ */
+function renderMessageContent(content) {
+    if (!content) return '';
+
+    // Initialize libraries if needed
+    if (!window.marked || !window.katex) {
+        console.warn('Libraries not loaded yet, returning plain text');
+        return content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    try {
+        // First, render markdown
+        let html = marked.parse(content);
+
+        // Then render LaTeX expressions
+        // Handle block LaTeX: $$...$$
+        html = html.replace(/\$\$([\s\S]*?)\$\$/g, (match, latex) => {
+            try {
+                return katex.renderToString(latex.trim(), {
+                    displayMode: true,
+                    throwOnError: false,
+                    errorColor: '#cc0000'
+                });
+            } catch (e) {
+                return `<code style="color: #cc0000;">LaTeX Error: ${e.message}</code>`;
+            }
+        });
+
+        // Handle inline LaTeX: $...$ (but not inside code blocks)
+        html = html.replace(/(?<!\\)\$([^$\n]+?)(?<!\\)\$/g, (match, latex) => {
+            try {
+                return katex.renderToString(latex.trim(), {
+                    displayMode: false,
+                    throwOnError: false,
+                    errorColor: '#cc0000'
+                });
+            } catch (e) {
+                return `<code style="color: #cc0000;">LaTeX Error: ${e.message}</code>`;
+            }
+        });
+
+        return html;
+    } catch (error) {
+        console.error('Error rendering message content:', error);
+        return content;
+    }
+}
+
 // DOM 元素
 const wordInput = document.getElementById('wordInput');
 const queryBtn = document.getElementById('queryBtn');
@@ -20,16 +106,21 @@ const loginModal = document.getElementById('loginModal');
 const loginBtn = document.getElementById('loginBtn');
 const userInfo = document.getElementById('userInfo');
 const aiChatBtn = document.getElementById('aiChatBtn');
-const aiChatModal = document.getElementById('aiChatModal');
-const chatMessages = document.getElementById('chatMessages');
-const chatInput = document.getElementById('chatInput');
 let chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]'); // 聊天历史
+
+// 仅在AI聊天模态框存在时加载聊天历史
+function loadChatHistoryIfNeeded() {
+    const aiChatModal = document.getElementById('aiChatModal');
+    if (aiChatModal) {
+        loadChatHistory();
+    }
+}
 
 // 初始化
 document.addEventListener('DOMContentLoaded', function() {
     checkLoginStatus();
     setupEventListeners();
-    loadChatHistory();
+    loadChatHistoryIfNeeded();
 });
 
 /**
@@ -701,10 +792,10 @@ async function deleteWord(word) {
 }
 
 /**
- * 切换AI聊天窗口
+ * 切换到AI聊天页面
  */
 function toggleAIChat() {
-    aiChatModal.style.display = aiChatModal.style.display === 'flex' ? 'none' : 'flex';
+    window.location.href = '/ai-chat';
 }
 
 /**
@@ -742,13 +833,26 @@ function renderChatMessages() {
 
     // 渲染历史消息
     chatHistory.forEach(msg => {
+        const messageWrapper = document.createElement('div');
+        messageWrapper.className = 'message-wrapper';
+        messageWrapper.dataset.messageId = msg.id || '';
+
+        // Add delete button
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'message-delete-btn';
+        deleteBtn.innerHTML = '×';
+        deleteBtn.title = '删除消息';
+        deleteBtn.onclick = () => deleteChatMessage(msg.id);
+        messageWrapper.appendChild(deleteBtn);
+
         const messageDiv = document.createElement('div');
         messageDiv.className = `chat-message ${msg.role}`;
         messageDiv.innerHTML = `
-            <div>${msg.content}</div>
+            <div>${renderMessageContent(msg.content)}</div>
             <div class="chat-timestamp">${msg.timestamp}</div>
         `;
-        chatMessages.appendChild(messageDiv);
+        messageWrapper.appendChild(messageDiv);
+        chatMessages.appendChild(messageWrapper);
     });
 
     // 滚动到底部
@@ -783,6 +887,24 @@ function changeAIModel() {
 }
 
 /**
+ * 删除单条聊天记录
+ */
+function deleteChatMessage(messageId) {
+    if (!messageId) return;
+
+    if (confirm('确定要删除这条消息吗？')) {
+        // Remove from chat history
+        chatHistory = chatHistory.filter(msg => msg.id !== messageId);
+
+        // Save to localStorage
+        saveChatHistory();
+
+        // Re-render messages
+        renderChatMessages();
+    }
+}
+
+/**
  * 清空聊天记录
  */
 function clearChatHistory() {
@@ -791,6 +913,13 @@ function clearChatHistory() {
         localStorage.removeItem('chatHistory');
         renderChatMessages();
     }
+}
+
+/**
+ * 生成消息ID
+ */
+function generateMessageId() {
+    return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
 }
 
 /**
@@ -805,6 +934,7 @@ async function sendChatMessage() {
 
     // 添加用户消息到UI
     const userMessage = {
+        id: generateMessageId(),
         role: 'user',
         content: message,
         timestamp: new Date().toLocaleTimeString()
@@ -832,7 +962,10 @@ async function sendChatMessage() {
             },
             body: JSON.stringify({
                 message: message,
-                history: chatHistory.slice(-10), // 只发送最近10条消息作为上下文
+                history: chatHistory.slice(-10).map(msg => ({
+                    role: msg.role,
+                    content: msg.content
+                })), // 只发送最近10条消息作为上下文
                 model: currentModel // 发送选择的模型
             })
         });
@@ -848,6 +981,7 @@ async function sendChatMessage() {
         if (response.ok) {
             // 添加AI回复到UI
             const aiMessage = {
+                id: generateMessageId(),
                 role: 'ai',
                 content: data.reply,
                 timestamp: new Date().toLocaleTimeString()

@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 对话 - 英语单词本</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <style>
+        /* AI Chat Page Specific Styles */
+        body {
+            background-color: var(--background-color);
+        }
+
+        .ai-chat-container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .ai-chat-header {
+            background: var(--card-background);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .ai-chat-header h1 {
+            color: var(--primary-color);
+            margin: 0;
+            font-size: 1.8em;
+        }
+
+        .back-btn {
+            padding: 8px 16px;
+            background-color: var(--text-light);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .back-btn:hover {
+            background-color: #555;
+        }
+
+        .chat-main {
+            flex: 1;
+            background: var(--card-background);
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-messages-container {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background-color: var(--background-color);
+        }
+
+        .message-wrapper {
+            position: relative;
+            margin-bottom: 15px;
+        }
+
+        .message-wrapper:hover .message-delete-btn {
+            opacity: 1;
+        }
+
+        .message-delete-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background-color: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            font-size: 14px;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.3s, background-color 0.3s;
+            z-index: 10;
+        }
+
+        .message-delete-btn:hover {
+            background-color: #ff5252;
+        }
+
+        .chat-message {
+            padding: 15px;
+            border-radius: 12px;
+            max-width: 80%;
+            position: relative;
+            word-wrap: break-word;
+        }
+
+        .chat-message.user {
+            background-color: var(--primary-color);
+            color: white;
+            margin-left: auto;
+            text-align: right;
+            border-bottom-right-radius: 4px;
+        }
+
+        .chat-message.ai {
+            background-color: white;
+            color: var(--text-color);
+            margin-right: auto;
+            border: 1px solid var(--border-color);
+            border-bottom-left-radius: 4px;
+        }
+
+        .chat-message .katex {
+            font-size: 1.1em;
+        }
+
+        .chat-message .katex-display {
+            margin: 10px 0;
+        }
+
+        .message-time {
+            font-size: 11px;
+            color: var(--text-light);
+            margin-top: 5px;
+            text-align: right;
+        }
+
+        .chat-welcome {
+            text-align: center;
+            color: var(--text-light);
+            margin-bottom: 20px;
+            padding: 40px 20px;
+        }
+
+        .chat-welcome p {
+            margin: 10px 0;
+            font-size: 1.1em;
+        }
+
+        .chat-controls {
+            padding: 20px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .model-select {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 14px;
+            background-color: white;
+            min-width: 200px;
+        }
+
+        .clear-chat-btn {
+            padding: 8px 16px;
+            background-color: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+            white-space: nowrap;
+        }
+
+        .clear-chat-btn:hover {
+            background-color: #ff5252;
+        }
+
+        .chat-input-area {
+            padding: 20px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            gap: 10px;
+            background-color: white;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 16px;
+            resize: none;
+            font-family: inherit;
+        }
+
+        .chat-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .send-btn {
+            padding: 12px 24px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+
+        .send-btn:hover {
+            background-color: #357abd;
+        }
+
+        .send-btn:disabled {
+            background-color: var(--text-light);
+            cursor: not-allowed;
+        }
+
+        .typing-indicator {
+            background-color: white;
+            padding: 15px;
+            border-radius: 12px;
+            margin-right: auto;
+            border: 1px solid var(--border-color);
+            max-width: 80%;
+        }
+
+        .typing-dots {
+            display: inline-flex;
+            gap: 4px;
+        }
+
+        .typing-dots span {
+            width: 8px;
+            height: 8px;
+            background-color: var(--text-light);
+            border-radius: 50%;
+            animation: typing-dot 1.4s infinite;
+        }
+
+        .typing-dots span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dots span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing-dot {
+            0%, 60%, 100% {
+                transform: translateY(0);
+            }
+            30% {
+                transform: translateY(-10px);
+            }
+        }
+
+        /* Markdown rendering styles */
+        .chat-message h1, .chat-message h2, .chat-message h3,
+        .chat-message h4, .chat-message h5, .chat-message h6 {
+            margin: 10px 0 5px 0;
+            color: inherit;
+        }
+
+        .chat-message h1 { font-size: 1.5em; }
+        .chat-message h2 { font-size: 1.3em; }
+        .chat-message h3 { font-size: 1.2em; }
+
+        .chat-message p {
+            margin: 5px 0;
+        }
+
+        .chat-message code {
+            background-color: rgba(0, 0, 0, 0.1);
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        .chat-message pre {
+            background-color: rgba(0, 0, 0, 0.1);
+            padding: 10px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+
+        .chat-message pre code {
+            background-color: transparent;
+            padding: 0;
+        }
+
+        .chat-message blockquote {
+            border-left: 4px solid var(--primary-color);
+            padding-left: 10px;
+            margin: 10px 0;
+            color: var(--text-light);
+        }
+
+        .chat-message ul, .chat-message ol {
+            margin: 5px 0;
+            padding-left: 20px;
+        }
+
+        .chat-message li {
+            margin: 3px 0;
+        }
+
+        .chat-message a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        .chat-message a:hover {
+            text-decoration: underline;
+        }
+
+        .chat-message.user a {
+            color: white;
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .ai-chat-container {
+                padding: 10px;
+            }
+
+            .ai-chat-header {
+                padding: 15px;
+            }
+
+            .ai-chat-header h1 {
+                font-size: 1.5em;
+            }
+
+            .chat-message {
+                max-width: 90%;
+            }
+
+            .model-select {
+                min-width: 150px;
+                font-size: 12px;
+            }
+
+            .chat-controls {
+                flex-wrap: wrap;
+                padding: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="ai-chat-container">
+        <div class="ai-chat-header">
+            <h1>🤖 与 LongCat AI 对话</h1>
+            <a href="{{ url_for('index') }}" class="back-btn">← 返回单词本</a>
+        </div>
+
+        <div class="chat-main">
+            <div class="chat-controls">
+                <select id="aiModelSelect" class="model-select">
+                    <option value="LongCat-Flash-Chat">LongCat-Flash-Chat (高性能对话)</option>
+                    <option value="LongCat-Flash-Chat-2602-Exp">LongCat-Flash-Chat-2602-Exp (实验版对话)</option>
+                    <option value="LongCat-Flash-Thinking">LongCat-Flash-Thinking (深度思考)</option>
+                    <option value="LongCat-Flash-Thinking-2601">LongCat-Flash-Thinking-2601 (升级版思考)</option>
+                    <option value="LongCat-Flash-Omni-2603">LongCat-Flash-Omni-2603 (多模态)</option>
+                    <option value="LongCat-Flash-Lite" selected>LongCat-Flash-Lite (高效轻量)</option>
+                    <option value="LongCat-2.0-Preview">LongCat-2.0-Preview (高性能Agentic)</option>
+                </select>
+                <button class="clear-chat-btn" onclick="clearChatHistory()">清空记录</button>
+            </div>
+
+            <div class="chat-messages-container" id="chatMessages">
+                <div class="chat-welcome">
+                    <p>你好！我是 LongCat AI，有什么可以帮助你的吗？</p>
+                </div>
+            </div>
+
+            <div class="chat-input-area">
+                <textarea id="chatInput" class="chat-input" placeholder="输入消息..." rows="2"></textarea>
+                <button class="send-btn" onclick="sendChatMessage()">发送</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- KaTeX Library -->
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <!-- Marked Library -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <script>
+        // Initialize marked for markdown parsing
+        marked.setOptions({
+            breaks: true,
+            gfm: true,
+            headerIds: false,
+            mangle: false
+        });
+
+        // Global variables
+        const API_BASE_URL = '/api';
+        let chatHistory = [];
+        let currentTypingIndicator = null;
+
+        // DOM elements
+        const chatMessages = document.getElementById('chatMessages');
+        const chatInput = document.getElementById('chatInput');
+        const modelSelect = document.getElementById('aiModelSelect');
+
+        // Load chat history on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadChatHistory();
+            setupEventListeners();
+        });
+
+        function setupEventListeners() {
+            // Handle Enter key for sending messages
+            chatInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendChatMessage();
+                }
+            });
+
+            // Auto-resize textarea
+            chatInput.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+            });
+        }
+
+        function loadChatHistory() {
+            const savedHistory = localStorage.getItem('chatHistory');
+            if (savedHistory) {
+                chatHistory = JSON.parse(savedHistory);
+                renderChatMessages();
+            }
+        }
+
+        function saveChatHistory() {
+            localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+        }
+
+        function generateMessageId() {
+            return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+        }
+
+        function renderChatMessages() {
+            chatMessages.innerHTML = '';
+
+            // Add welcome message if no history
+            if (chatHistory.length === 0) {
+                const welcomeDiv = document.createElement('div');
+                welcomeDiv.className = 'chat-welcome';
+                welcomeDiv.innerHTML = '<p>你好！我是 LongCat AI，有什么可以帮助你的吗？</p>';
+                chatMessages.appendChild(welcomeDiv);
+                return;
+            }
+
+            // Render all messages
+            chatHistory.forEach(msg => {
+                const messageWrapper = document.createElement('div');
+                messageWrapper.className = 'message-wrapper';
+                messageWrapper.dataset.messageId = msg.id;
+
+                // Add delete button
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'message-delete-btn';
+                deleteBtn.innerHTML = '×';
+                deleteBtn.title = '删除消息';
+                deleteBtn.onclick = () => deleteMessage(msg.id);
+                messageWrapper.appendChild(deleteBtn);
+
+                // Create message element
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `chat-message ${msg.role}`;
+                messageDiv.innerHTML = renderMessageContent(msg.content);
+
+                // Add timestamp
+                const timeDiv = document.createElement('div');
+                timeDiv.className = 'message-time';
+                timeDiv.textContent = msg.timestamp;
+                messageDiv.appendChild(timeDiv);
+
+                messageWrapper.appendChild(messageDiv);
+                chatMessages.appendChild(messageWrapper);
+            });
+
+            // Scroll to bottom
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function renderMessageContent(content) {
+            // First, render markdown
+            let html = marked.parse(content);
+
+            // Then render LaTeX expressions
+            // Handle block LaTeX: $$...$$
+            html = html.replace(/\$\$([\s\S]*?)\$\$/g, (match, latex) => {
+                try {
+                    return katex.renderToString(latex.trim(), {
+                        displayMode: true,
+                        throwOnError: false,
+                        errorColor: '#cc0000'
+                    });
+                } catch (e) {
+                    return `<code>LaTeX Error: ${e.message}</code>`;
+                }
+            });
+
+            // Handle inline LaTeX: $...$
+            html = html.replace(/(?<!\\)\$([^$\n]+?)(?<!\\)\$/g, (match, latex) => {
+                try {
+                    return katex.renderToString(latex.trim(), {
+                        displayMode: false,
+                        throwOnError: false,
+                        errorColor: '#cc0000'
+                    });
+                } catch (e) {
+                    return `<code>LaTeX Error: ${e.message}</code>`;
+                }
+            });
+
+            return html;
+        }
+
+        function deleteMessage(messageId) {
+            if (!confirm('确定要删除这条消息吗？')) {
+                return;
+            }
+
+            // Remove from chat history
+            chatHistory = chatHistory.filter(msg => msg.id !== messageId);
+
+            // Save to localStorage
+            saveChatHistory();
+
+            // Re-render messages
+            renderChatMessages();
+
+            // Optional: Notify server about deletion
+            fetch(`${API_BASE_URL}/chat/messages/${messageId}/delete`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    user_id: localStorage.getItem('userId')
+                })
+            }).catch(error => {
+                console.error('Failed to notify server about message deletion:', error);
+            });
+        }
+
+        function clearChatHistory() {
+            if (confirm('确定要清空所有聊天记录吗？此操作不可恢复。')) {
+                chatHistory = [];
+                localStorage.removeItem('chatHistory');
+                renderChatMessages();
+            }
+        }
+
+        function getCurrentAIModel() {
+            return modelSelect.value;
+        }
+
+        function showTypingIndicator() {
+            if (currentTypingIndicator) {
+                currentTypingIndicator.remove();
+            }
+
+            currentTypingIndicator = document.createElement('div');
+            currentTypingIndicator.className = 'typing-indicator';
+            currentTypingIndicator.innerHTML = `
+                <div class="typing-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            `;
+            chatMessages.appendChild(currentTypingIndicator);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function removeTypingIndicator() {
+            if (currentTypingIndicator) {
+                currentTypingIndicator.remove();
+                currentTypingIndicator = null;
+            }
+        }
+
+        async function sendChatMessage() {
+            const message = chatInput.value.trim();
+            if (!message) return;
+
+            // Disable input and button during sending
+            chatInput.disabled = true;
+            const sendBtn = document.querySelector('.send-btn');
+            sendBtn.disabled = true;
+
+            // Create user message
+            const userMessage = {
+                id: generateMessageId(),
+                role: 'user',
+                content: message,
+                timestamp: new Date().toLocaleTimeString()
+            };
+
+            // Add to history and render
+            chatHistory.push(userMessage);
+            renderChatMessages();
+            saveChatHistory();
+
+            // Clear input
+            chatInput.value = '';
+            chatInput.style.height = 'auto';
+
+            // Show typing indicator
+            showTypingIndicator();
+
+            try {
+                // Call AI API
+                const response = await fetch(`${API_BASE_URL}/chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        history: chatHistory.slice(-10).map(msg => ({
+                            role: msg.role,
+                            content: msg.content
+                        })),
+                        model: getCurrentAIModel()
+                    })
+                });
+
+                removeTypingIndicator();
+
+                if (response.ok) {
+                    const data = await response.json();
+
+                    // Create AI message
+                    const aiMessage = {
+                        id: generateMessageId(),
+                        role: 'ai',
+                        content: data.reply,
+                        timestamp: new Date().toLocaleTimeString()
+                    };
+
+                    // Add to history and render
+                    chatHistory.push(aiMessage);
+                    renderChatMessages();
+                    saveChatHistory();
+                } else {
+                    const data = await response.json();
+                    // Show error message
+                    const errorMessage = {
+                        id: generateMessageId(),
+                        role: 'ai',
+                        content: `错误：${data.error || '请求失败'}`,
+                        timestamp: new Date().toLocaleTimeString()
+                    };
+                    chatHistory.push(errorMessage);
+                    renderChatMessages();
+                    saveChatHistory();
+                }
+            } catch (error) {
+                removeTypingIndicator();
+
+                // Show error message
+                const errorMessage = {
+                    id: generateMessageId(),
+                    role: 'ai',
+                    content: '错误：网络连接失败，请检查网络',
+                    timestamp: new Date().toLocaleTimeString()
+                };
+                chatHistory.push(errorMessage);
+                renderChatMessages();
+                saveChatHistory();
+
+                console.error('Error:', error);
+            } finally {
+                // Re-enable input and button
+                chatInput.disabled = false;
+                sendBtn.disabled = false;
+                chatInput.focus();
+            }
+        }
+
+        // Focus input on page load
+        window.addEventListener('load', function() {
+            chatInput.focus();
+        });
+    </script>
+</body>
+</html>

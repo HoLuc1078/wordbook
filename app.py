@@ -613,6 +613,34 @@ def health_check():
         'longcat_api_key': bool(LONGCAT_API_KEY)
     }), 200
 
+@app.route('/ai-chat')
+def ai_chat_page():
+    """渲染AI聊天页面"""
+    return render_template('ai_chat.html')
+
+@app.route('/api/chat/messages/<message_id>/delete', methods=['DELETE'])
+def delete_chat_message(message_id):
+    """删除特定聊天消息"""
+    try:
+        # 从请求中获取用户ID，用于验证消息归属
+        data = request.get_json() or {}
+        user_id = data.get('user_id') or session.get('user_id')
+
+        # 这里简化处理，实际应该验证消息是否属于该用户
+        # 由于聊天历史存储在客户端localStorage，此端点主要用于
+        # 确认删除操作和可能的服务器端日志记录
+
+        return jsonify({
+            'success': True,
+            'message': f'Message {message_id} deleted successfully'
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to delete message: {str(e)}'
+        }), 500
+
 if __name__ == '__main__':
     # 初始化数据库
     init_db()
@@ -620,4 +648,4 @@ if __name__ == '__main__':
     print(f"LongCat API Key 已配置: {bool(LONGCAT_API_KEY)}")
 
     # 启动 Flask 应用
-    app.run(debug=True, port=5000)
+    app.run(host='0.0.0.0', port=5000, debug=False)

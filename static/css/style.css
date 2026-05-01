@@ -629,6 +629,37 @@ textarea.form-input {
     padding: 0;
 }
 
+/* Message wrapper for deletion */
+.message-wrapper {
+    position: relative;
+    margin-bottom: 15px;
+}
+
+.message-wrapper:hover .message-delete-btn {
+    opacity: 1;
+}
+
+.message-delete-btn {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    background-color: #ff6b6b;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    font-size: 14px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.3s, background-color 0.3s;
+    z-index: 10;
+}
+
+.message-delete-btn:hover {
+    background-color: #ff5252;
+}
+
 .chat-header {
     padding: 20px;
     border-bottom: 1px solid var(--border-color);
