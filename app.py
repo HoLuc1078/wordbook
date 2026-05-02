@@ -80,10 +80,13 @@ def fetch_word_info_from_longcat(word):
 
     prompt = f"""请为英语单词 "{word}" 提供以下信息，并用严格的 JSON 格式返回（词组可以不止一个，不要包含任何其他文字）：
 {{
-  "meaning": "中文释义",
+  "meaning": [{{"pos": "词性简写", "translation": "中文释义"}}, {{"pos": "词性简写2", "translation": "中文释义2"}}],
   "phrases": [{{"phrase": "词组1", "meaning": "中文含义1"}}, {{"phrase": "词组2", "meaning": "中文含义2"}}],
   "example": {{"en": "英文例句", "zh": "中文翻译"}}
-}}"""
+}}
+
+词性简写可以是任意标准格式，如：c., uc., adj., adv., prep., conj., pron., int., art., num., vt., vi., pl., sing. 等注意标记名词是否可数（c. uc.）以及动词是否及物（vi. vt.）。确保返回的JSON格式严格正确，不要包含任何其他文字。
+"""
 
     payload = {
         "model": LONGCAT_MODEL,
@@ -92,7 +95,7 @@ def fetch_word_info_from_longcat(word):
             {"role": "user", "content": prompt}
         ],
         "temperature": 0.3,
-        "max_tokens": 800
+        "max_tokens": 1024
     }
 
     try:
@@ -388,7 +391,14 @@ def update_word(word):
 
         # 更新含义（JSON格式）
         if 'meaning' in data:
-            meaning_json = json.dumps(data['meaning'], ensure_ascii=False)
+            # 支持新的数组格式和旧的对象格式
+            meaning_data = data['meaning']
+            # 如果 meaning 包含 'meaning' 字段，说明是嵌套格式，需要提取内部的 meaning 数组
+            if isinstance(meaning_data, dict) and 'meaning' in meaning_data:
+                meaning_to_save = meaning_data['meaning']
+            else:
+                meaning_to_save = meaning_data
+            meaning_json = json.dumps(meaning_to_save, ensure_ascii=False)
             updates.append("meaning = ?")
             params.append(meaning_json)
 
@@ -584,7 +594,7 @@ def chat_with_ai():
             "model": model,  # 使用选择的模型
             "messages": messages,
             "temperature": 0.7,
-            "max_tokens": 1000
+            "max_tokens": 32767
         }
 
         response = requests.post(

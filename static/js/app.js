@@ -424,12 +424,69 @@ function renderWordsList(words) {
     }
 
     const wordsHTML = words.map(word => {
-        const meaning = word.meaning?.meaning || '暂无释义';
+        // 处理不同的meaning结构
+        let meaningText = '暂无释义';
+
+        if (!word.meaning) {
+            meaningText = '暂无释义';
+        } else if (Array.isArray(word.meaning)) {
+            // 新格式：直接是数组
+            meaningText = word.meaning.map(item => {
+                if (typeof item === 'object' && item !== null) {
+                    const pos = item.pos || '';
+                    const translation = item.translation || '';
+                    return pos ? `${pos} ${translation}` : translation;
+                }
+                return '';
+            }).filter(text => text).join('；');
+        } else if (typeof word.meaning === 'object' && word.meaning !== null) {
+            // 检查是否是AI返回的新格式对象
+            const meaningData = word.meaning;
+            // AI返回的完整格式：{meaning: [...], phrases: [...], example: {...}}
+            if (Array.isArray(meaningData.meaning)) {
+                // AI返回的完整格式
+                meaningText = meaningData.meaning.map(item => {
+                    if (typeof item === 'object' && item !== null) {
+                        const pos = item.pos || '';
+                        const translation = item.translation || '';
+                        return pos ? `${pos} ${translation}` : translation;
+                    }
+                    return '';
+                }).filter(text => text).join('；');
+            } else if (meaningData.meaning && typeof meaningData.meaning === 'string') {
+                // 兼容旧格式
+                meaningText = meaningData.meaning;
+            } else {
+                // 其他对象格式，尝试查找是否有嵌套的meaning数组
+                let foundMeaning = false;
+                Object.keys(meaningData).forEach(key => {
+                    if (Array.isArray(meaningData[key]) && foundMeaning === false) {
+                        const arr = meaningData[key];
+                        const textArr = arr.map(item => {
+                            if (typeof item === 'object' && item !== null) {
+                                const pos = item.pos || '';
+                                const translation = item.translation || '';
+                                return pos ? `${pos} ${translation}` : translation;
+                            }
+                            return '';
+                        }).filter(text => text);
+                        if (textArr.length > 0) {
+                            meaningText = textArr.join('；');
+                            foundMeaning = true;
+                        }
+                    }
+                });
+                if (!foundMeaning) {
+                    meaningText = '暂无释义';
+                }
+            }
+        }
+
         return `
             <div class="word-card" onclick="showWordDetail('${word.word}')">
                 <div class="word-info">
                     <div class="word-text">${word.word}</div>
-                    <div class="word-meaning">${meaning}</div>
+                    <div class="word-meaning">${meaningText}</div>
                 </div>
                 <div class="word-counter">${word.counter}</div>
             </div>
@@ -463,9 +520,37 @@ async function showWordDetail(word) {
  * 渲染单词详情
  */
 function renderWordDetail(wordData) {
-    const meaning = wordData.meaning || {};
-    const phrases = meaning.phrases || [];
-    const example = meaning.example || {};
+    // 获取原始数据
+    const meaningData = wordData.meaning || {};
+    const phrases = meaningData.phrases || [];
+    const example = meaningData.example || {};
+
+    // 处理不同的meaning结构
+    let meaningHTML = '暂无释义';
+    if (Array.isArray(meaningData)) {
+        // 直接是数组
+        meaningHTML = meaningData.map(item => {
+            const pos = item.pos || '';
+            const translation = item.translation || '';
+            return `<div class="meaning-item"><span class="pos-tag">${pos}</span> ${translation}</div>`;
+        }).join('');
+    } else if (typeof meaningData === 'object' && meaningData !== null) {
+        // 是对象
+        if (Array.isArray(meaningData.meaning)) {
+            // 嵌套数组格式
+            meaningHTML = meaningData.meaning.map(item => {
+                const pos = item.pos || '';
+                const translation = item.translation || '';
+                return `<div class="meaning-item"><span class="pos-tag">${pos}</span> ${translation}</div>`;
+            }).join('');
+        } else if (meaningData.meaning !== undefined) {
+            // 旧字符串格式
+            meaningHTML = `<div class="meaning-item">${meaningData.meaning}</div>`;
+        } else {
+            // 其他对象格式
+            meaningHTML = `<div class="meaning-item">${JSON.stringify(meaningData)}</div>`;
+        }
+    }
 
     const modalHTML = `
         <div class="word-detail">
@@ -473,7 +558,7 @@ function renderWordDetail(wordData) {
 
             <div class="detail-section">
                 <h4>📖 中文释义</h4>
-                <div class="meaning-text">${meaning.meaning || '暂无释义'}</div>
+                <div class="meaning-list">${meaningHTML}</div>
             </div>
 
             <div class="detail-section">
@@ -587,9 +672,45 @@ function editWord(word) {
     const wordData = wordsCache.find(w => w.word === word);
     if (!wordData) return;
 
-    const meaning = wordData.meaning || {};
-    const phrases = meaning.phrases || [];
-    const example = meaning.example || {};
+    // 获取原始数据
+    const meaningData = wordData.meaning || {};
+    const phrases = meaningData.phrases || [];
+    const example = meaningData.example || {};
+
+    // 处理不同的meaning结构
+    let meanings = [];
+    if (Array.isArray(meaningData)) {
+        // 直接是数组
+        meanings = meaningData.map(item => ({
+            pos: item.pos || '',
+            translation: item.translation || ''
+        }));
+    } else if (typeof meaningData === 'object' && meaningData !== null) {
+        // 是对象，检查是否有meaning字段
+        if (Array.isArray(meaningData.meaning)) {
+            // 嵌套数组格式
+            meanings = meaningData.meaning.map(item => ({
+                pos: item.pos || '',
+                translation: item.translation || ''
+            }));
+        } else if (meaningData.meaning) {
+            // 旧字符串格式
+            meanings = [{
+                pos: '',
+                translation: meaningData.meaning
+            }];
+        } else {
+            // 其他情况
+            meanings = [{
+                pos: '',
+                translation: JSON.stringify(meaningData)
+            }];
+        }
+    }
+
+    if (meanings.length === 0) {
+        meanings = [{ pos: '', translation: '' }];
+    }
 
     // 将详情转换为编辑模式
     const editHTML = `
@@ -603,7 +724,16 @@ function editWord(word) {
 
             <div class="form-group">
                 <label>中文释义：</label>
-                <textarea id="editMeaningInput" class="form-input" rows="2">${meaning.meaning || ''}</textarea>
+                <div id="editMeaningsContainer">
+                    ${meanings.map((m, index) => `
+                        <div class="meaning-input-group">
+                            <input type="text" id="editMeaningPos${index}" value="${m.pos}" placeholder="词性简写" class="form-input pos-input">
+                            <input type="text" id="editMeaningTrans${index}" value="${m.translation}" placeholder="中文释义" class="form-input">
+                            <button type="button" onclick="removeMeaning(${index})" class="remove-btn">删除</button>
+                        </div>
+                    `).join('')}
+                </div>
+                <button type="button" onclick="addMeaning()" class="add-btn">+ 添加释义</button>
             </div>
 
             <div class="form-group">
@@ -643,23 +773,34 @@ function editWord(word) {
     modalBody.innerHTML = editHTML;
 }
 
-// 用于跟踪当前编辑的词组数量
+// 用于跟踪当前编辑的词组和释义数量
 let currentPhraseCount = 0;
+let currentMeaningCount = 0;
 
 /**
- * 添加词组输入框
+ * 添加释义输入框
  */
-function addPhrase() {
-    currentPhraseCount++;
-    const container = document.getElementById('editPhrasesContainer');
-    const newPhraseHTML = `
-        <div class="phrase-input-group">
-            <input type="text" id="editPhraseEn${currentPhraseCount}" placeholder="英文词组" class="form-input">
-            <input type="text" id="editPhraseZh${currentPhraseCount}" placeholder="中文含义" class="form-input">
-            <button type="button" onclick="removePhrase(${currentPhraseCount})" class="remove-btn">删除</button>
+function addMeaning() {
+    currentMeaningCount++;
+    const container = document.getElementById('editMeaningsContainer');
+    const newMeaningHTML = `
+        <div class="meaning-input-group">
+            <input type="text" id="editMeaningPos${currentMeaningCount}" placeholder="词性简写" class="form-input pos-input">
+            <input type="text" id="editMeaningTrans${currentMeaningCount}" placeholder="中文释义" class="form-input">
+            <button type="button" onclick="removeMeaning(${currentMeaningCount})" class="remove-btn">删除</button>
         </div>
     `;
-    container.insertAdjacentHTML('beforeend', newPhraseHTML);
+    container.insertAdjacentHTML('beforeend', newMeaningHTML);
+}
+
+/**
+ * 删除释义输入框
+ */
+function removeMeaning(index) {
+    const element = document.getElementById(`editMeaningPos${index}`)?.parentElement;
+    if (element) {
+        element.remove();
+    }
 }
 
 /**
@@ -678,10 +819,31 @@ function removePhrase(index) {
 async function saveWord(originalWord) {
     try {
         const newWord = document.getElementById('editWordInput').value.trim();
-        const meaningText = document.getElementById('editMeaningInput').value.trim();
         const exampleEn = document.getElementById('editExampleEn').value.trim();
         const exampleZh = document.getElementById('editExampleZh').value.trim();
         const counter = parseInt(document.getElementById('editCounterInput').value) || 1;
+
+        // 收集所有释义
+        const meanings = [];
+        const meaningGroups = document.querySelectorAll('.meaning-input-group');
+        meaningGroups.forEach(group => {
+            // 找到两个输入框（词性简写和中文释义）
+            const inputs = group.querySelectorAll('input[type="text"]');
+            if (inputs.length >= 2) {
+                const posInput = inputs[0];
+                const transInput = inputs[1];
+                if (transInput.value.trim()) {
+                    const pos = posInput.value.trim();
+                    const translation = transInput.value.trim();
+                    if (pos || translation) { // 至少有一个有值
+                        meanings.push({
+                            pos: pos,
+                            translation: translation
+                        });
+                    }
+                }
+            }
+        });
 
         // 收集所有词组
         const phrases = [];
@@ -702,7 +864,7 @@ async function saveWord(originalWord) {
             word: newWord,
             counter: counter,
             meaning: {
-                meaning: meaningText,
+                meaning: meanings, // 使用数组格式
                 phrases: phrases,
                 example: {
                     en: exampleEn,
