@@ -48,6 +48,7 @@
                 <span>查询中...</span>
             </div>
             <div id="errorMessage" class="error-message" style="display: none;"></div>
+            <div id="successMessage" class="success-message" style="display: none;"></div>
         </section>
 
         <!-- 单词列表展示区域 -->
@@ -59,12 +60,18 @@
                     <p>开始添加你的第一个单词吧！</p>
                 </div>
             </div>
+            <!-- 分页控件 -->
+            <div id="pagination" class="pagination" style="display: none;">
+                <button id="prevPageBtn" class="page-btn" onclick="changePage(-1)">上一页</button>
+                <span id="pageInfo" class="page-info"></span>
+                <button id="nextPageBtn" class="page-btn" onclick="changePage(1)">下一页</button>
+            </div>
         </section>
 
         <!-- 单词详情弹窗 -->
         <div id="wordModal" class="modal" style="display: none;">
             <div class="modal-content">
-                <span class="close-btn">&times;</span>
+                <span class="close-btn" onclick="closeModal()">&times;</span>
                 <div id="modalBody">
                     <!-- 动态内容 -->
                 </div>
@@ -74,7 +81,7 @@
         <!-- 登录/注册弹窗 -->
         <div id="loginModal" class="modal" style="display: none;">
             <div class="modal-content">
-                <span class="close-btn">&times;</span>
+                <span class="close-btn" onclick="closeLoginModal()">&times;</span>
                 <div id="loginModalBody">
                     <div class="auth-tabs">
                         <button class="tab-btn active" onclick="switchTab('login')">登录</button>
@@ -114,7 +121,7 @@
         <!-- AI 聊天窗口 -->
         <div id="aiChatModal" class="modal" style="display: none;">
             <div class="modal-content chat-content">
-                <span class="close-btn">&times;</span>
+                <span class="close-btn" onclick="closeAIChatModal()">&times;</span>
                 <div class="chat-header">
                     <h3>与 LongCat AI 对话</h3>
                     <div class="chat-controls">
@@ -143,6 +150,8 @@
         </div>
     </div>
 
+    <!-- 公共主题 JS -->
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>

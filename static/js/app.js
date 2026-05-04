@@ -2,81 +2,17 @@
  * 英语单词本 - JavaScript 逻辑
  */
 
-// ==================== 主题切换 ====================
-const THEME_KEY = 'theme-preference';
-
-function getSystemTheme() {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-}
-
-function applyTheme(theme) {
-    const root = document.documentElement;
-    if (theme === 'system') {
-        root.setAttribute('data-theme', getSystemTheme());
-    } else {
-        root.setAttribute('data-theme', theme);
-    }
-    updateThemeUI(theme);
-    localStorage.setItem(THEME_KEY, theme);
-}
-
-function setTheme(theme) {
-    applyTheme(theme);
-    closeThemeDropdown();
-}
-
-function updateThemeUI(theme) {
-    const themeIcon = document.getElementById('themeIcon');
-    const themeLabel = document.getElementById('themeLabel');
-    const options = document.querySelectorAll('.theme-option');
-
-    const icons = { light: '☀️', dark: '🌙', system: '🌓' };
-    const labels = { light: '浅色', dark: '深色', system: '跟随系统' };
-
-    if (themeIcon) themeIcon.textContent = icons[theme] || '🌓';
-    if (themeLabel) themeLabel.textContent = labels[theme] || '跟随系统';
-
-    options.forEach(opt => {
-        opt.classList.toggle('active', opt.dataset.value === theme);
-    });
-}
-
-function toggleThemeDropdown() {
-    const dropdown = document.getElementById('themeDropdown');
-    if (dropdown) dropdown.classList.toggle('show');
-}
-
-function closeThemeDropdown() {
-    const dropdown = document.getElementById('themeDropdown');
-    if (dropdown) dropdown.classList.remove('show');
-}
-
-// Close dropdown when clicking outside
-document.addEventListener('click', function(e) {
-    if (!e.target.closest('.theme-toggle')) {
-        closeThemeDropdown();
-    }
-});
-
-// Listen for system theme changes
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
-    const saved = localStorage.getItem(THEME_KEY) || 'system';
-    if (saved === 'system') {
-        applyTheme('system');
-    }
-});
-
-// Initialize theme
-(function initTheme() {
-    const saved = localStorage.getItem(THEME_KEY) || 'system';
-    applyTheme(saved);
-})();
-
 // ==================== 全局变量 ====================
-// 全局变量
 const API_BASE_URL = '/api';
 let wordsCache = []; // 缓存单词列表
 let currentUser = null; // 当前登录用户
+// 分页相关
+const PAGE_SIZE = 20;
+let currentPage = 1;
+let totalPages = 1;
+// 错误提示定时器
+let errorTimer = null;
+let successTimer = null;
 
 // 动态加载必要的库
 function loadLibraries() {
@@ -169,23 +105,18 @@ const wordInput = document.getElementById('wordInput');
 const queryBtn = document.getElementById('queryBtn');
 const loadingIndicator = document.getElementById('loadingIndicator');
 const errorMessage = document.getElementById('errorMessage');
+const successMessage = document.getElementById('successMessage');
 const wordsList = document.getElementById('wordsList');
 const wordModal = document.getElementById('wordModal');
 const modalBody = document.getElementById('modalBody');
-const closeBtn = document.querySelector('.close-btn');
 const loginModal = document.getElementById('loginModal');
 const loginBtn = document.getElementById('loginBtn');
 const userInfo = document.getElementById('userInfo');
 const aiChatBtn = document.getElementById('aiChatBtn');
+const aiChatModal = document.getElementById('aiChatModal');
 let chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]'); // 聊天历史
-
-// 仅在AI聊天模态框存在时加载聊天历史
-function loadChatHistoryIfNeeded() {
-    const aiChatModal = document.getElementById('aiChatModal');
-    if (aiChatModal) {
-        loadChatHistory();
-    }
-}
+const chatMessages = document.getElementById('chatMessages');
+const chatInput = document.getElementById('chatInput');
 
 // 初始化
 document.addEventListener('DOMContentLoaded', function() {
@@ -208,42 +139,58 @@ function setupEventListeners() {
         }
     });
 
-    // 关闭弹窗事件
-    closeBtn.addEventListener('click', closeModal);
-
-    // 点击弹窗外部关闭
-    wordModal.addEventListener('click', function(e) {
-        if (e.target === wordModal) {
-            closeModal();
-        }
-    });
-
     // 登录按钮点击事件
     loginBtn.addEventListener('click', function() {
         loginModal.style.display = 'flex';
     });
 
-    // 登录弹窗关闭
-    loginModal.querySelector('.close-btn').addEventListener('click', function() {
-        loginModal.style.display = 'none';
-    });
+    // AI聊天弹窗关闭
+    if (aiChatModal) {
+        aiChatModal.addEventListener('click', function(e) {
+            if (e.target === aiChatModal) {
+                closeAIChatModal();
+            }
+        });
+    }
 
-    // 点击登录弹窗外部关闭
-    loginModal.addEventListener('click', function(e) {
-        if (e.target === loginModal) {
-            loginModal.style.display = 'none';
+    // ==================== 事件委托：单词列表点击 ====================
+    wordsList.addEventListener('click', function(e) {
+        const card = e.target.closest('.word-card');
+        if (card) {
+            const word = card.dataset.word;
+            if (word) showWordDetail(word);
         }
     });
 
-    // AI聊天弹窗关闭
-    aiChatModal.querySelector('.close-btn').addEventListener('click', function() {
-        aiChatModal.style.display = 'none';
-    });
+    // ==================== 事件委托：模态框内按钮 ====================
+    modalBody.addEventListener('click', function(e) {
+        const editBtn = e.target.closest('.edit-btn');
+        const deleteBtn = e.target.closest('.delete-btn');
+        const saveBtn = e.target.closest('.save-btn');
+        const cancelBtn = e.target.closest('.cancel-btn');
+        const addMeaningBtn = e.target.closest('.add-meaning-btn');
+        const addPhraseBtn = e.target.closest('.add-phrase-btn');
 
-    // 点击AI聊天弹窗外部关闭
-    aiChatModal.addEventListener('click', function(e) {
-        if (e.target === aiChatModal) {
-            aiChatModal.style.display = 'none';
+        if (editBtn) {
+            const word = editBtn.dataset.word;
+            if (word) editWord(word);
+        }
+        if (deleteBtn) {
+            const word = deleteBtn.dataset.word;
+            if (word) deleteWord(word);
+        }
+        if (saveBtn) {
+            const word = saveBtn.dataset.originalWord;
+            if (word) saveWord(word);
+        }
+        if (cancelBtn) {
+            cancelEdit();
+        }
+        if (addMeaningBtn) {
+            addMeaning();
+        }
+        if (addPhraseBtn) {
+            addPhrase();
         }
     });
 }
@@ -339,7 +286,7 @@ async function handleLogin() {
             currentUser = data.user;
             loginModal.style.display = 'none';
             updateUI();
-            showError('登录成功');
+            showSuccess('登录成功');
         } else {
             showError(data.error || '登录失败');
         }
@@ -380,7 +327,7 @@ async function handleRegister() {
             currentUser = data.user;
             loginModal.style.display = 'none';
             updateUI();
-            showError('注册并登录成功');
+            showSuccess('注册并登录成功');
         } else {
             showError(data.error || '注册失败');
         }
@@ -405,8 +352,9 @@ async function logout() {
         if (response.ok) {
             currentUser = null;
             wordsCache = [];
+            currentPage = 1;
             updateUI();
-            showError('已退出登录');
+            showSuccess('已退出登录');
         }
     } catch (error) {
         console.error('Error:', error);
@@ -432,6 +380,7 @@ async function handleQueryWord() {
     // 显示加载状态
     showLoading();
     hideError();
+    hideSuccess();
 
     try {
         const response = await fetch(`${API_BASE_URL}/words`, {
@@ -447,7 +396,22 @@ async function handleQueryWord() {
         if (response.ok) {
             // 成功处理
             wordInput.value = ''; // 清空输入框
-            await loadWordsList(); // 刷新列表
+
+            // 增量更新：将新单词添加到缓存
+            if (data.word) {
+                const existingIndex = wordsCache.findIndex(w => w.id === data.word.id);
+                if (existingIndex >= 0) {
+                    wordsCache[existingIndex] = data.word;
+                } else {
+                    wordsCache.unshift(data.word);
+                }
+                // 重新计算分页
+                totalPages = Math.max(1, Math.ceil(wordsCache.length / PAGE_SIZE));
+                currentPage = 1;
+                renderCurrentPage();
+            } else {
+                await loadWordsList();
+            }
         } else {
             // 显示错误信息
             showError(data.error || '操作失败');
@@ -470,7 +434,9 @@ async function loadWordsList() {
 
         if (response.ok) {
             wordsCache = words;
-            renderWordsList(words);
+            totalPages = Math.max(1, Math.ceil(wordsCache.length / PAGE_SIZE));
+            currentPage = 1;
+            renderCurrentPage();
         } else {
             showError('加载单词列表失败');
         }
@@ -481,20 +447,25 @@ async function loadWordsList() {
 }
 
 /**
- * 渲染单词列表
+ * 渲染当前页的单词列表
  */
-function renderWordsList(words) {
-    if (words.length === 0) {
+function renderCurrentPage() {
+    const startIndex = (currentPage - 1) * PAGE_SIZE;
+    const endIndex = startIndex + PAGE_SIZE;
+    const pageWords = wordsCache.slice(startIndex, endIndex);
+
+    if (wordsCache.length === 0) {
         wordsList.innerHTML = `
             <div class="empty-state">
                 <p>暂无单词记录</p>
                 <p>开始添加你的第一个单词吧！</p>
             </div>
         `;
+        document.getElementById('pagination').style.display = 'none';
         return;
     }
 
-    const wordsHTML = words.map(word => {
+    const wordsHTML = pageWords.map(word => {
         // 处理不同的meaning结构
         let meaningText = '暂无释义';
 
@@ -554,7 +525,7 @@ function renderWordsList(words) {
         }
 
         return `
-            <div class="word-card" onclick="showWordDetail('${word.word}')">
+            <div class="word-card" data-word="${word.word}">
                 <div class="word-info">
                     <div class="word-text">${word.word}</div>
                     <div class="word-meaning">${meaningText}</div>
@@ -565,6 +536,28 @@ function renderWordsList(words) {
     }).join('');
 
     wordsList.innerHTML = wordsHTML;
+
+    // 更新分页控件
+    const pagination = document.getElementById('pagination');
+    if (totalPages > 1) {
+        pagination.style.display = 'flex';
+        document.getElementById('pageInfo').textContent = `${currentPage} / ${totalPages}`;
+        document.getElementById('prevPageBtn').disabled = currentPage <= 1;
+        document.getElementById('nextPageBtn').disabled = currentPage >= totalPages;
+    } else {
+        pagination.style.display = 'none';
+    }
+}
+
+/**
+ * 切换页面
+ */
+function changePage(delta) {
+    const newPage = currentPage + delta;
+    if (newPage >= 1 && newPage <= totalPages) {
+        currentPage = newPage;
+        renderCurrentPage();
+    }
 }
 
 /**
@@ -671,8 +664,8 @@ function renderWordDetail(wordData) {
             </div>
 
             <div class="modal-actions">
-                <button class="edit-btn" onclick="editWord('${wordData.word}')">✏️ 编辑单词</button>
-                <button class="delete-btn" onclick="deleteWord('${wordData.word}')">🗑️ 删除单词</button>
+                <button class="edit-btn" data-word="${wordData.word}">✏️ 编辑单词</button>
+                <button class="delete-btn" data-word="${wordData.word}">🗑️ 删除单词</button>
             </div>
         </div>
     `;
@@ -681,10 +674,24 @@ function renderWordDetail(wordData) {
 }
 
 /**
- * 关闭弹窗
+ * 关闭详情弹窗
  */
 function closeModal() {
     wordModal.style.display = 'none';
+}
+
+/**
+ * 关闭登录弹窗
+ */
+function closeLoginModal() {
+    loginModal.style.display = 'none';
+}
+
+/**
+ * 关闭AI聊天弹窗
+ */
+function closeAIChatModal() {
+    if (aiChatModal) aiChatModal.style.display = 'none';
 }
 
 /**
@@ -707,11 +714,38 @@ function hideLoading() {
  * 显示错误信息
  */
 function showError(message) {
+    // 清除之前的定时器，避免竞态
+    if (errorTimer) {
+        clearTimeout(errorTimer);
+        errorTimer = null;
+    }
+    // 同时隐藏成功信息
+    hideSuccess();
+
     errorMessage.textContent = message;
     errorMessage.style.display = 'block';
 
     // 3秒后自动隐藏错误信息
-    setTimeout(hideError, 3000);
+    errorTimer = setTimeout(hideError, 3000);
+}
+
+/**
+ * 显示成功信息
+ */
+function showSuccess(message) {
+    // 清除之前的定时器，避免竞态
+    if (successTimer) {
+        clearTimeout(successTimer);
+        successTimer = null;
+    }
+    // 同时隐藏错误信息
+    hideError();
+
+    successMessage.textContent = message;
+    successMessage.style.display = 'block';
+
+    // 3秒后自动隐藏成功信息
+    successTimer = setTimeout(hideSuccess, 3000);
 }
 
 /**
@@ -719,6 +753,23 @@ function showError(message) {
  */
 function hideError() {
     errorMessage.style.display = 'none';
+    if (errorTimer) {
+        clearTimeout(errorTimer);
+        errorTimer = null;
+    }
+}
+
+/**
+ * 隐藏成功信息
+ */
+function hideSuccess() {
+    if (successMessage) {
+        successMessage.style.display = 'none';
+    }
+    if (successTimer) {
+        clearTimeout(successTimer);
+        successTimer = null;
+    }
 }
 
 /**
@@ -804,7 +855,7 @@ function editWord(word) {
                         </div>
                     `).join('')}
                 </div>
-                <button type="button" onclick="addMeaning()" class="add-btn">+ 添加释义</button>
+                <button type="button" class="add-btn add-meaning-btn">+ 添加释义</button>
             </div>
 
             <div class="form-group">
@@ -818,7 +869,7 @@ function editWord(word) {
                         </div>
                     `).join('')}
                 </div>
-                <button type="button" onclick="addPhrase()" class="add-btn">+ 添加词组</button>
+                <button type="button" class="add-btn add-phrase-btn">+ 添加词组</button>
             </div>
 
             <div class="form-group">
@@ -835,8 +886,8 @@ function editWord(word) {
             </div>
 
             <div class="form-actions">
-                <button class="save-btn" onclick="saveWord('${word}')">💾 保存</button>
-                <button class="cancel-btn" onclick="cancelEdit()">❌ 取消</button>
+                <button class="save-btn" data-original-word="${word}">💾 保存</button>
+                <button class="cancel-btn">❌ 取消</button>
             </div>
         </div>
     `;
@@ -862,6 +913,22 @@ function addMeaning() {
         </div>
     `;
     container.insertAdjacentHTML('beforeend', newMeaningHTML);
+}
+
+/**
+ * 添加词组输入框
+ */
+function addPhrase() {
+    currentPhraseCount++;
+    const container = document.getElementById('editPhrasesContainer');
+    const newPhraseHTML = `
+        <div class="phrase-input-group">
+            <input type="text" id="editPhraseEn${currentPhraseCount}" placeholder="英文词组" class="form-input">
+            <input type="text" id="editPhraseZh${currentPhraseCount}" placeholder="中文含义" class="form-input">
+            <button type="button" onclick="removePhrase(${currentPhraseCount})" class="remove-btn">删除</button>
+        </div>
+    `;
+    container.insertAdjacentHTML('beforeend', newPhraseHTML);
 }
 
 /**
@@ -946,6 +1013,7 @@ async function saveWord(originalWord) {
 
         showLoading();
         hideError();
+        hideSuccess();
 
         const response = await fetch(`${API_BASE_URL}/words/${originalWord}`, {
             method: 'PUT',
@@ -958,10 +1026,14 @@ async function saveWord(originalWord) {
         const data = await response.json();
 
         if (response.ok) {
-            // 更新成功，刷新列表和详情
-            await loadWordsList();
+            // 增量更新：更新缓存中的单词
+            const cacheIndex = wordsCache.findIndex(w => w.word === originalWord);
+            if (cacheIndex >= 0) {
+                wordsCache[cacheIndex] = data.word;
+            }
+            renderCurrentPage();
             closeModal();
-            showError('单词更新成功');
+            showSuccess('单词更新成功');
         } else {
             showError(data.error || '更新失败');
         }
@@ -998,6 +1070,7 @@ async function deleteWord(word) {
     try {
         showLoading();
         hideError();
+        hideSuccess();
 
         const response = await fetch(`${API_BASE_URL}/words/${word}`, {
             method: 'DELETE',
@@ -1009,10 +1082,13 @@ async function deleteWord(word) {
         const data = await response.json();
 
         if (response.ok) {
-            // 删除成功，关闭弹窗并刷新列表
+            // 增量更新：从缓存中移除
+            wordsCache = wordsCache.filter(w => w.word !== word);
+            totalPages = Math.max(1, Math.ceil(wordsCache.length / PAGE_SIZE));
+            if (currentPage > totalPages) currentPage = totalPages;
+            renderCurrentPage();
             closeModal();
-            await loadWordsList();
-            showError('单词删除成功');
+            showSuccess('单词删除成功');
         } else {
             showError(data.error || '删除失败');
         }
@@ -1029,6 +1105,15 @@ async function deleteWord(word) {
  */
 function toggleAIChat() {
     window.location.href = '/ai-chat';
+}
+
+// ==================== AI 聊天功能（弹窗模式） ====================
+
+// 仅在AI聊天模态框存在时加载聊天历史
+function loadChatHistoryIfNeeded() {
+    if (aiChatModal) {
+        loadChatHistory();
+    }
 }
 
 /**
@@ -1053,6 +1138,7 @@ function saveChatHistory() {
  * 渲染聊天消息
  */
 function renderChatMessages() {
+    if (!chatMessages) return;
     chatMessages.innerHTML = '';
 
     // 添加欢迎消息（只在第一次）
@@ -1107,14 +1193,13 @@ function handleChatKeyPress(event) {
  */
 function getCurrentAIModel() {
     const modelSelect = document.getElementById('aiModelSelect');
-    return modelSelect.value;
+    return modelSelect ? modelSelect.value : 'LongCat-Flash-Lite';
 }
 
 /**
  * 切换 AI 模型
  */
 function changeAIModel() {
-    // 可以在这里添加模型切换的提示
     const model = getCurrentAIModel();
     console.log('切换到模型:', model);
 }
@@ -1159,7 +1244,10 @@ function generateMessageId() {
  * 发送聊天消息
  */
 async function sendChatMessage() {
-    const message = chatInput.value.trim();
+    const input = chatInput || document.getElementById('chatInput');
+    if (!input) return;
+
+    const message = input.value.trim();
     if (!message) return;
 
     // 获取当前选择的模型
@@ -1176,7 +1264,7 @@ async function sendChatMessage() {
     renderChatMessages();
 
     // 清空输入框
-    chatInput.value = '';
+    input.value = '';
 
     // 显示正在输入状态
     const typingDiv = document.createElement('div');

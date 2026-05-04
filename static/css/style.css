@@ -254,6 +254,58 @@ header p {
     margin-top: 10px;
 }
 
+.success-message {
+    background-color: #e8f5e9;
+    color: #2e7d32;
+    padding: 10px 15px;
+    border-radius: 6px;
+    margin-top: 10px;
+}
+
+[data-theme="dark"] .success-message {
+    background-color: #1b3a1b;
+    color: #81c784;
+}
+
+/* 分页样式 */
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid var(--border-color);
+}
+
+.page-btn {
+    padding: 8px 16px;
+    background-color: var(--primary-color);
+    color: var(--on-primary);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.3s;
+}
+
+.page-btn:hover:not(:disabled) {
+    background-color: var(--primary-hover);
+}
+
+.page-btn:disabled {
+    background-color: var(--text-light);
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.page-info {
+    color: var(--text-light);
+    font-size: 14px;
+    min-width: 60px;
+    text-align: center;
+}
+
 /* 单词列表区域 */
 .words-section {
     background: var(--card-background);
@@ -526,6 +578,8 @@ header p {
     border: 2px solid var(--border-color);
     border-radius: 6px;
     font-size: 14px;
+    background-color: var(--input-bg);
+    color: var(--text-color);
     transition: border-color 0.3s;
 }
 

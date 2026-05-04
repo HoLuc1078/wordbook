@@ -4,6 +4,7 @@
 import os
 import sqlite3
 import json
+from contextlib import contextmanager
 from datetime import datetime
 from dotenv import load_dotenv
 import requests
@@ -16,7 +17,7 @@ load_dotenv()
 
 # 初始化 Flask 应用
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', os.urandom(24))  # Session 密钥
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'wordbook-secret-key-2024')  # Session 密钥
 CORS(app)  # 启用跨域支持
 
 # 配置
@@ -24,6 +25,43 @@ DATABASE = os.path.join(os.path.dirname(__file__), 'database', 'words.db')
 LONGCAT_API_KEY = os.getenv('LONGCAT_API_KEY')
 LONGCAT_API_URL = "https://api.longcat.chat/openai/v1/chat/completions"
 LONGCAT_MODEL = "LongCat-Flash-Lite"
+
+# ==================== 简单的内存频率限制器 ====================
+_request_counts = {}
+
+def check_rate_limit(key, max_requests=30, window_seconds=60):
+    """
+    检查请求频率限制
+    key: 限制标识（如 IP 地址）
+    max_requests: 时间窗口内允许的最大请求数
+    window_seconds: 时间窗口（秒）
+    返回: True 表示通过，False 表示超限
+    """
+    now = datetime.now().timestamp()
+    if key not in _request_counts:
+        _request_counts[key] = []
+
+    # 清理过期记录
+    _request_counts[key] = [t for t in _request_counts[key] if now - t < window_seconds]
+
+    if len(_request_counts[key]) >= max_requests:
+        return False
+
+    _request_counts[key].append(now)
+    return True
+
+def rate_limit(max_requests=30, window_seconds=60):
+    """频率限制装饰器"""
+    def decorator(f):
+        def wrapper(*args, **kwargs):
+            key = request.remote_addr or 'unknown'
+            route_key = f"{key}:{request.endpoint}"
+            if not check_rate_limit(route_key, max_requests, window_seconds):
+                return jsonify({'error': '请求过于频繁，请稍后再试'}), 429
+            return f(*args, **kwargs)
+        wrapper.__name__ = f.__name__
+        return wrapper
+    return decorator
 
 def init_db():
     """初始化数据库，创建 users 和 words 表"""
@@ -56,6 +94,11 @@ def init_db():
         )
     ''')
 
+    # 创建索引以优化查询性能
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_words_user_id ON words(user_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_words_counter ON words(counter DESC)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_words_user_word ON words(user_id, word)')
+
     conn.commit()
     conn.close()
 
@@ -64,6 +107,16 @@ def get_db_connection():
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row  # 使返回结果可按字典访问
     return conn
+
+@contextmanager
+def get_db():
+    """数据库连接上下文管理器，确保异常时也能关闭连接"""
+    conn = sqlite3.connect(DATABASE)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 def fetch_word_info_from_longcat(word):
     """
@@ -140,6 +193,7 @@ def index():
     return render_template('index.html')
 
 @app.route('/api/words', methods=['POST'])
+@rate_limit(max_requests=20, window_seconds=60)
 def add_or_update_word():
     """
     添加新单词或更新现有单词的查询次数
@@ -158,78 +212,75 @@ def add_or_update_word():
         # 获取用户ID（如果未登录，使用 None）
         user_id = session.get('user_id')
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db() as conn:
+            cursor = conn.cursor()
 
-        # 检查该用户的单词是否已存在（如果 user_id 为 None，则查询所有未登录用户的单词）
-        if user_id:
-            cursor.execute("SELECT * FROM words WHERE word = ? AND user_id = ?", (word, user_id))
-        else:
-            cursor.execute("SELECT * FROM words WHERE word = ? AND user_id IS NULL", (word,))
-        existing_word = cursor.fetchone()
+            # 检查该用户的单词是否已存在（如果 user_id 为 None，则查询所有未登录用户的单词）
+            if user_id:
+                cursor.execute("SELECT * FROM words WHERE word = ? AND user_id = ?", (word, user_id))
+            else:
+                cursor.execute("SELECT * FROM words WHERE word = ? AND user_id IS NULL", (word,))
+            existing_word = cursor.fetchone()
 
-        if existing_word:
-            # 单词已存在，更新 counter
-            cursor.execute(
-                "UPDATE words SET counter = counter + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (existing_word['id'],)
-            )
-            conn.commit()
-
-            # 获取更新后的单词信息
-            cursor.execute("SELECT * FROM words WHERE id = ?", (existing_word['id'],))
-            updated_word = cursor.fetchone()
-
-            result = {
-                'id': updated_word['id'],
-                'word': updated_word['word'],
-                'counter': updated_word['counter'],
-                'meaning': json.loads(updated_word['meaning']) if updated_word['meaning'] else None,
-                'created_at': updated_word['created_at'],
-                'updated_at': updated_word['updated_at']
-            }
-
-            conn.close()
-            return jsonify({
-                'message': '单词已存在，计数器已更新',
-                'word': result
-            }), 200
-        else:
-            # 单词不存在，调用 AI API 获取信息
-            try:
-                word_info = fetch_word_info_from_longcat(word)
-                meaning_json = json.dumps(word_info, ensure_ascii=False)
-
-                # 插入新单词（如果未登录，user_id 为 None）
+            if existing_word:
+                # 单词已存在，更新 counter
                 cursor.execute(
-                    "INSERT INTO words (word, user_id, meaning) VALUES (?, ?, ?)",
-                    (word, user_id, meaning_json)
+                    "UPDATE words SET counter = counter + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (existing_word['id'],)
                 )
                 conn.commit()
 
-                # 获取新插入的单词信息
-                word_id = cursor.lastrowid
-                cursor.execute("SELECT * FROM words WHERE id = ?", (word_id,))
-                new_word = cursor.fetchone()
+                # 获取更新后的单词信息
+                cursor.execute("SELECT * FROM words WHERE id = ?", (existing_word['id'],))
+                updated_word = cursor.fetchone()
 
                 result = {
-                    'id': new_word['id'],
-                    'word': new_word['word'],
-                    'counter': new_word['counter'],
-                    'meaning': word_info,
-                    'created_at': new_word['created_at'],
-                    'updated_at': new_word['updated_at']
+                    'id': updated_word['id'],
+                    'word': updated_word['word'],
+                    'counter': updated_word['counter'],
+                    'meaning': json.loads(updated_word['meaning']) if updated_word['meaning'] else None,
+                    'created_at': updated_word['created_at'],
+                    'updated_at': updated_word['updated_at']
                 }
 
-                conn.close()
                 return jsonify({
-                    'message': '新单词已添加',
+                    'message': '单词已存在，计数器已更新',
                     'word': result
-                }), 201
+                }), 200
+            else:
+                # 单词不存在，调用 AI API 获取信息
+                try:
+                    word_info = fetch_word_info_from_longcat(word)
+                    meaning_json = json.dumps(word_info, ensure_ascii=False)
 
-            except Exception as e:
-                conn.close()
-                return jsonify({'error': f'调用 AI API 失败: {str(e)}'}), 500
+                    # 插入新单词（如果未登录，user_id 为 None）
+                    cursor.execute(
+                        "INSERT INTO words (word, user_id, meaning) VALUES (?, ?, ?)",
+                        (word, user_id, meaning_json)
+                    )
+                    conn.commit()
+
+                    # 获取新插入的单词信息
+                    word_id = cursor.lastrowid
+                    cursor.execute("SELECT * FROM words WHERE id = ?", (word_id,))
+                    new_word = cursor.fetchone()
+
+                    result = {
+                        'id': new_word['id'],
+                        'word': new_word['word'],
+                        'counter': new_word['counter'],
+                        'meaning': word_info,
+                        'created_at': new_word['created_at'],
+                        'updated_at': new_word['updated_at']
+                    }
+
+                    return jsonify({
+                        'message': '新单词已添加',
+                        'word': result
+                    }), 201
+
+                except Exception as e:
+                    return jsonify({'error': f'调用 AI API 失败: {str(e)}'}), 500
 
     except Exception as e:
         return jsonify({'error': f'服务器错误: {str(e)}'}), 500
@@ -241,37 +292,36 @@ def get_all_words():
         # 获取用户ID（如果未登录，使用 None）
         user_id = session.get('user_id')
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db() as conn:
+            cursor = conn.cursor()
 
-        if user_id:
-            # 已登录用户，只获取该用户的单词
-            cursor.execute("""
-                SELECT id, word, counter, meaning
-                FROM words
-                WHERE user_id = ?
-                ORDER BY counter DESC, word ASC
-            """, (user_id,))
-        else:
-            # 未登录用户，获取所有未登录用户的单词
-            cursor.execute("""
-                SELECT id, word, counter, meaning
-                FROM words
-                WHERE user_id IS NULL
-                ORDER BY counter DESC, word ASC
-            """)
+            if user_id:
+                # 已登录用户，只获取该用户的单词
+                cursor.execute("""
+                    SELECT id, word, counter, meaning
+                    FROM words
+                    WHERE user_id = ?
+                    ORDER BY counter DESC, word ASC
+                """, (user_id,))
+            else:
+                # 未登录用户，获取所有未登录用户的单词
+                cursor.execute("""
+                    SELECT id, word, counter, meaning
+                    FROM words
+                    WHERE user_id IS NULL
+                    ORDER BY counter DESC, word ASC
+                """)
 
-        words = []
-        for row in cursor.fetchall():
-            words.append({
-                'id': row['id'],
-                'word': row['word'],
-                'counter': row['counter'],
-                'meaning': json.loads(row['meaning']) if row['meaning'] else None
-            })
+            words = []
+            for row in cursor.fetchall():
+                words.append({
+                    'id': row['id'],
+                    'word': row['word'],
+                    'counter': row['counter'],
+                    'meaning': json.loads(row['meaning']) if row['meaning'] else None
+                })
 
-        conn.close()
-        return jsonify(words), 200
+            return jsonify(words), 200
 
     except Exception as e:
         return jsonify({'error': f'服务器错误: {str(e)}'}), 500
@@ -284,30 +334,28 @@ def get_word_detail(word):
         # 获取用户ID（如果未登录，使用 None）
         user_id = session.get('user_id')
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db() as conn:
+            cursor = conn.cursor()
 
-        if user_id:
-            cursor.execute("SELECT * FROM words WHERE word = ? AND user_id = ?", (word, user_id))
-        else:
-            cursor.execute("SELECT * FROM words WHERE word = ? AND user_id IS NULL", (word,))
-        word_data = cursor.fetchone()
+            if user_id:
+                cursor.execute("SELECT * FROM words WHERE word = ? AND user_id = ?", (word, user_id))
+            else:
+                cursor.execute("SELECT * FROM words WHERE word = ? AND user_id IS NULL", (word,))
+            word_data = cursor.fetchone()
 
-        if not word_data:
-            conn.close()
-            return jsonify({'error': '单词不存在'}), 404
+            if not word_data:
+                return jsonify({'error': '单词不存在'}), 404
 
-        result = {
-            'id': word_data['id'],
-            'word': word_data['word'],
-            'counter': word_data['counter'],
-            'meaning': json.loads(word_data['meaning']) if word_data['meaning'] else None,
-            'created_at': word_data['created_at'],
-            'updated_at': word_data['updated_at']
-        }
+            result = {
+                'id': word_data['id'],
+                'word': word_data['word'],
+                'counter': word_data['counter'],
+                'meaning': json.loads(word_data['meaning']) if word_data['meaning'] else None,
+                'created_at': word_data['created_at'],
+                'updated_at': word_data['updated_at']
+            }
 
-        conn.close()
-        return jsonify(result), 200
+            return jsonify(result), 200
 
     except Exception as e:
         return jsonify({'error': f'服务器错误: {str(e)}'}), 500
@@ -320,26 +368,24 @@ def delete_word(word):
         # 获取用户ID（如果未登录，使用 None）
         user_id = session.get('user_id')
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db() as conn:
+            cursor = conn.cursor()
 
-        # 检查单词是否存在且属于当前用户
-        if user_id:
-            cursor.execute("SELECT * FROM words WHERE word = ? AND user_id = ?", (word, user_id))
-        else:
-            cursor.execute("SELECT * FROM words WHERE word = ? AND user_id IS NULL", (word,))
-        word_data = cursor.fetchone()
+            # 检查单词是否存在且属于当前用户
+            if user_id:
+                cursor.execute("SELECT * FROM words WHERE word = ? AND user_id = ?", (word, user_id))
+            else:
+                cursor.execute("SELECT * FROM words WHERE word = ? AND user_id IS NULL", (word,))
+            word_data = cursor.fetchone()
 
-        if not word_data:
-            conn.close()
-            return jsonify({'error': '单词不存在'}), 404
+            if not word_data:
+                return jsonify({'error': '单词不存在'}), 404
 
-        # 删除单词
-        cursor.execute("DELETE FROM words WHERE id = ?", (word_data['id'],))
-        conn.commit()
-        conn.close()
+            # 删除单词
+            cursor.execute("DELETE FROM words WHERE id = ?", (word_data['id'],))
+            conn.commit()
 
-        return jsonify({'message': '单词删除成功'}), 200
+            return jsonify({'message': '单词删除成功'}), 200
 
     except Exception as e:
         return jsonify({'error': f'服务器错误: {str(e)}'}), 500
@@ -358,81 +404,84 @@ def update_word(word):
         if not data:
             return jsonify({'error': '缺少更新数据'}), 400
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db() as conn:
+            cursor = conn.cursor()
 
-        # 检查单词是否存在且属于当前用户
-        cursor.execute("SELECT * FROM words WHERE word = ? AND user_id = ?", (word, user_id))
-        word_data = cursor.fetchone()
+            try:
+                # 检查单词是否存在且属于当前用户
+                cursor.execute("SELECT * FROM words WHERE word = ? AND user_id = ?", (word, user_id))
+                word_data = cursor.fetchone()
 
-        if not word_data:
-            conn.close()
-            return jsonify({'error': '单词不存在'}), 404
+                if not word_data:
+                    return jsonify({'error': '单词不存在'}), 404
 
-        # 构建更新语句
-        updates = []
-        params = []
+                # 构建更新语句
+                updates = []
+                params = []
 
-        # 更新单词本身
-        if 'word' in data and data['word'].lower() != word:
-            new_word = data['word'].lower()
-            # 检查新单词在当前用户下是否已存在
-            cursor.execute("SELECT * FROM words WHERE word = ? AND user_id = ?", (new_word, user_id))
-            if cursor.fetchone():
-                conn.close()
-                return jsonify({'error': '新单词已存在'}), 400
-            updates.append("word = ?")
-            params.append(new_word)
+                # 更新单词本身
+                if 'word' in data and data['word'].lower() != word:
+                    new_word = data['word'].lower()
+                    # 检查新单词在当前用户下是否已存在
+                    cursor.execute("SELECT * FROM words WHERE word = ? AND user_id = ?", (new_word, user_id))
+                    if cursor.fetchone():
+                        return jsonify({'error': '新单词已存在'}), 400
+                    updates.append("word = ?")
+                    params.append(new_word)
 
-        # 更新计数器
-        if 'counter' in data:
-            updates.append("counter = ?")
-            params.append(data['counter'])
+                # 更新计数器
+                if 'counter' in data:
+                    updates.append("counter = ?")
+                    params.append(data['counter'])
 
-        # 更新含义（JSON格式）
-        if 'meaning' in data:
-            # 支持新的数组格式和旧的对象格式
-            meaning_data = data['meaning']
-            # 如果 meaning 包含 'meaning' 字段，说明是嵌套格式，需要提取内部的 meaning 数组
-            if isinstance(meaning_data, dict) and 'meaning' in meaning_data:
-                meaning_to_save = meaning_data['meaning']
-            else:
-                meaning_to_save = meaning_data
-            meaning_json = json.dumps(meaning_to_save, ensure_ascii=False)
-            updates.append("meaning = ?")
-            params.append(meaning_json)
+                # 更新含义（JSON格式）
+                if 'meaning' in data:
+                    # 支持新的数组格式和旧的对象格式
+                    meaning_data = data['meaning']
+                    # 如果 meaning 包含 'meaning' 字段，说明是嵌套格式，需要提取内部的 meaning 数组
+                    if isinstance(meaning_data, dict) and 'meaning' in meaning_data:
+                        meaning_to_save = meaning_data['meaning']
+                    else:
+                        meaning_to_save = meaning_data
+                    meaning_json = json.dumps(meaning_to_save, ensure_ascii=False)
+                    updates.append("meaning = ?")
+                    params.append(meaning_json)
 
-        # 如果有更新字段
-        if updates:
-            updates.append("updated_at = CURRENT_TIMESTAMP")
-            update_sql = f"UPDATE words SET {', '.join(updates)} WHERE id = ?"
-            params.append(word_data['id'])
-            cursor.execute(update_sql, params)
-            conn.commit()
+                # 如果有更新字段
+                if updates:
+                    updates.append("updated_at = CURRENT_TIMESTAMP")
+                    update_sql = f"UPDATE words SET {', '.join(updates)} WHERE id = ?"
+                    params.append(word_data['id'])
+                    cursor.execute(update_sql, params)
+                    conn.commit()
 
-        # 获取更新后的单词信息
-        cursor.execute("SELECT * FROM words WHERE id = ?", (word_data['id'],))
-        updated_word = cursor.fetchone()
+                # 获取更新后的单词信息
+                cursor.execute("SELECT * FROM words WHERE id = ?", (word_data['id'],))
+                updated_word = cursor.fetchone()
 
-        result = {
-            'id': updated_word['id'],
-            'word': updated_word['word'],
-            'counter': updated_word['counter'],
-            'meaning': json.loads(updated_word['meaning']) if updated_word['meaning'] else None,
-            'created_at': updated_word['created_at'],
-            'updated_at': updated_word['updated_at']
-        }
+                result = {
+                    'id': updated_word['id'],
+                    'word': updated_word['word'],
+                    'counter': updated_word['counter'],
+                    'meaning': json.loads(updated_word['meaning']) if updated_word['meaning'] else None,
+                    'created_at': updated_word['created_at'],
+                    'updated_at': updated_word['updated_at']
+                }
 
-        conn.close()
-        return jsonify({
-            'message': '单词更新成功',
-            'word': result
-        }), 200
+                return jsonify({
+                    'message': '单词更新成功',
+                    'word': result
+                }), 200
+
+            except Exception as e:
+                conn.rollback()
+                raise e
 
     except Exception as e:
         return jsonify({'error': f'服务器错误: {str(e)}'}), 500
 
 @app.route('/api/register', methods=['POST'])
+@rate_limit(max_requests=5, window_seconds=60)
 def register():
     """用户注册接口"""
     try:
@@ -449,44 +498,42 @@ def register():
         if len(username) < 3:
             return jsonify({'error': '用户名至少需要3个字符'}), 400
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db() as conn:
+            cursor = conn.cursor()
 
-        # 检查用户名是否已存在
-        cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
-        if cursor.fetchone():
-            conn.close()
-            return jsonify({'error': '用户名已存在'}), 400
+            # 检查用户名是否已存在
+            cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+            if cursor.fetchone():
+                return jsonify({'error': '用户名已存在'}), 400
 
-        # 创建用户
-        password_hash = generate_password_hash(password) if password else None
-        cursor.execute(
-            "INSERT INTO users (username, password_hash) VALUES (?, ?)",
-            (username, password_hash)
-        )
-        conn.commit()
+            # 创建用户
+            password_hash = generate_password_hash(password) if password else None
+            cursor.execute(
+                "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+                (username, password_hash)
+            )
+            conn.commit()
 
-        # 获取新创建的用户ID
-        user_id = cursor.lastrowid
+            # 获取新创建的用户ID
+            user_id = cursor.lastrowid
 
-        # 设置session
-        session['user_id'] = user_id
-        session['username'] = username
+            # 设置session
+            session['user_id'] = user_id
+            session['username'] = username
 
-        conn.close()
-
-        return jsonify({
-            'message': '注册成功',
-            'user': {
-                'id': user_id,
-                'username': username
-            }
-        }), 201
+            return jsonify({
+                'message': '注册成功',
+                'user': {
+                    'id': user_id,
+                    'username': username
+                }
+            }), 201
 
     except Exception as e:
         return jsonify({'error': f'服务器错误: {str(e)}'}), 500
 
 @app.route('/api/login', methods=['POST'])
+@rate_limit(max_requests=10, window_seconds=60)
 def login():
     """用户登录接口"""
     try:
@@ -500,39 +547,34 @@ def login():
         if not username:
             return jsonify({'error': '用户名不能为空'}), 400
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db() as conn:
+            cursor = conn.cursor()
 
-        # 查找用户
-        cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
-        user = cursor.fetchone()
+            # 查找用户
+            cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+            user = cursor.fetchone()
 
-        if not user:
-            conn.close()
-            return jsonify({'error': '用户不存在'}), 404
+            if not user:
+                return jsonify({'error': '用户不存在'}), 404
 
-        # 验证密码（如果用户有设置密码）
-        if user['password_hash']:
-            if not password:
-                conn.close()
-                return jsonify({'error': '请输入密码'}), 400
-            if not check_password_hash(user['password_hash'], password):
-                conn.close()
-                return jsonify({'error': '密码错误'}), 401
+            # 验证密码（如果用户有设置密码）
+            if user['password_hash']:
+                if not password:
+                    return jsonify({'error': '请输入密码'}), 400
+                if not check_password_hash(user['password_hash'], password):
+                    return jsonify({'error': '密码错误'}), 401
 
-        # 设置session
-        session['user_id'] = user['id']
-        session['username'] = user['username']
+            # 设置session
+            session['user_id'] = user['id']
+            session['username'] = user['username']
 
-        conn.close()
-
-        return jsonify({
-            'message': '登录成功',
-            'user': {
-                'id': user['id'],
-                'username': user['username']
-            }
-        }), 200
+            return jsonify({
+                'message': '登录成功',
+                'user': {
+                    'id': user['id'],
+                    'username': user['username']
+                }
+            }), 200
 
     except Exception as e:
         return jsonify({'error': f'服务器错误: {str(e)}'}), 500
@@ -557,6 +599,7 @@ def get_current_user():
         return jsonify({'user': None}), 200
 
 @app.route('/api/chat', methods=['POST'])
+@rate_limit(max_requests=20, window_seconds=60)
 def chat_with_ai():
     """与 LongCat AI 对话接口"""
     try:
@@ -570,7 +613,7 @@ def chat_with_ai():
 
         # 构建对话历史
         messages = [
-            {"role": "system", "content": "你是一只可爱的猫娘，内嵌在了英语词典中，帮助用户学习和查询英语单词，请你在适当的位置增加“喵”，要求足够可爱，但是不要使用“🐱”。"}
+            {"role": "system", "content": "你是一只可爱的猫娘，内嵌在了英语词典中，帮助用户学习和查询英语单词，请你在适当的位置增加喵，要求足够可爱，但是不要使用🐱。"}
         ]
 
         # 添加历史消息
@@ -627,29 +670,6 @@ def health_check():
 def ai_chat_page():
     """渲染AI聊天页面"""
     return render_template('ai_chat.html')
-
-@app.route('/api/chat/messages/<message_id>/delete', methods=['DELETE'])
-def delete_chat_message(message_id):
-    """删除特定聊天消息"""
-    try:
-        # 从请求中获取用户ID，用于验证消息归属
-        data = request.get_json() or {}
-        user_id = data.get('user_id') or session.get('user_id')
-
-        # 这里简化处理，实际应该验证消息是否属于该用户
-        # 由于聊天历史存储在客户端localStorage，此端点主要用于
-        # 确认删除操作和可能的服务器端日志记录
-
-        return jsonify({
-            'success': True,
-            'message': f'Message {message_id} deleted successfully'
-        }), 200
-
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': f'Failed to delete message: {str(e)}'
-        }), 500
 
 if __name__ == '__main__':
     # 初始化数据库
