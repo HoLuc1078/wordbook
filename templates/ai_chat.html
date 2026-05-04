@@ -121,7 +121,7 @@
         }
 
         .chat-message.ai {
-            background-color: white;
+            background-color: var(--card-background);
             color: var(--text-color);
             margin-right: auto;
             border: 1px solid var(--border-color);
@@ -168,7 +168,8 @@
             border: 1px solid var(--border-color);
             border-radius: 6px;
             font-size: 14px;
-            background-color: white;
+            background-color: var(--card-background);
+            color: var(--text-color);
             min-width: 200px;
         }
 
@@ -193,7 +194,7 @@
             border-top: 1px solid var(--border-color);
             display: flex;
             gap: 10px;
-            background-color: white;
+            background-color: var(--card-background);
         }
 
         .chat-input {
@@ -232,7 +233,7 @@
         }
 
         .typing-indicator {
-            background-color: white;
+            background-color: var(--card-background);
             padding: 15px;
             border-radius: 12px;
             margin-right: auto;
@@ -286,7 +287,7 @@
         }
 
         .chat-message code {
-            background-color: rgba(0, 0, 0, 0.1);
+            background-color: rgba(128, 128, 128, 0.2);
             padding: 2px 4px;
             border-radius: 4px;
             font-family: 'Courier New', monospace;
@@ -294,7 +295,7 @@
         }
 
         .chat-message pre {
-            background-color: rgba(0, 0, 0, 0.1);
+            background-color: rgba(128, 128, 128, 0.2);
             padding: 10px;
             border-radius: 6px;
             overflow-x: auto;
@@ -366,6 +367,24 @@
     </style>
 </head>
 <body>
+    <div class="theme-toggle">
+        <button class="theme-btn" id="themeBtn" onclick="toggleThemeDropdown()">
+            <span class="theme-icon" id="themeIcon">🌓</span>
+            <span class="theme-label" id="themeLabel">跟随系统</span>
+        </button>
+        <div class="theme-dropdown" id="themeDropdown">
+            <button class="theme-option" data-value="light" onclick="setTheme('light')">
+                <span class="theme-icon">☀️</span> 浅色
+            </button>
+            <button class="theme-option" data-value="dark" onclick="setTheme('dark')">
+                <span class="theme-icon">🌙</span> 深色
+            </button>
+            <button class="theme-option active" data-value="system" onclick="setTheme('system')">
+                <span class="theme-icon">🌓</span> 跟随系统
+            </button>
+        </div>
+    </div>
+
     <div class="ai-chat-container">
         <div class="ai-chat-header">
             <h1>🤖 与 LongCat AI 对话</h1>
@@ -412,6 +431,73 @@
             headerIds: false,
             mangle: false
         });
+
+        // ==================== 主题切换 ====================
+        const THEME_KEY = 'theme-preference';
+
+        function getSystemTheme() {
+            return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+
+        function applyTheme(theme) {
+            const root = document.documentElement;
+            if (theme === 'system') {
+                root.setAttribute('data-theme', getSystemTheme());
+            } else {
+                root.setAttribute('data-theme', theme);
+            }
+            updateThemeUI(theme);
+            localStorage.setItem(THEME_KEY, theme);
+        }
+
+        function setTheme(theme) {
+            applyTheme(theme);
+            closeThemeDropdown();
+        }
+
+        function updateThemeUI(theme) {
+            const themeIcon = document.getElementById('themeIcon');
+            const themeLabel = document.getElementById('themeLabel');
+            const options = document.querySelectorAll('.theme-option');
+
+            const icons = { light: '☀️', dark: '🌙', system: '🌓' };
+            const labels = { light: '浅色', dark: '深色', system: '跟随系统' };
+
+            if (themeIcon) themeIcon.textContent = icons[theme] || '🌓';
+            if (themeLabel) themeLabel.textContent = labels[theme] || '跟随系统';
+
+            options.forEach(opt => {
+                opt.classList.toggle('active', opt.dataset.value === theme);
+            });
+        }
+
+        function toggleThemeDropdown() {
+            const dropdown = document.getElementById('themeDropdown');
+            if (dropdown) dropdown.classList.toggle('show');
+        }
+
+        function closeThemeDropdown() {
+            const dropdown = document.getElementById('themeDropdown');
+            if (dropdown) dropdown.classList.remove('show');
+        }
+
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.theme-toggle')) {
+                closeThemeDropdown();
+            }
+        });
+
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
+            const saved = localStorage.getItem(THEME_KEY) || 'system';
+            if (saved === 'system') {
+                applyTheme('system');
+            }
+        });
+
+        (function initTheme() {
+            const saved = localStorage.getItem(THEME_KEY) || 'system';
+            applyTheme(saved);
+        })();
 
         // Global variables
         const API_BASE_URL = '/api';

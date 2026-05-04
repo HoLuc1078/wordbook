@@ -2,14 +2,137 @@
 
 :root {
     --primary-color: #4a90e2;
+    --primary-hover: #357abd;
     --secondary-color: #50c878;
+    --secondary-hover: #45a049;
+    --danger-color: #ff6b6b;
+    --danger-hover: #ff5252;
+    --neutral-hover: #555555;
     --background-color: #f5f7fa;
     --card-background: #ffffff;
     --text-color: #333333;
     --text-light: #666666;
     --border-color: #e0e0e0;
+    --input-bg: #ffffff;
     --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     --shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.15);
+    --modal-overlay: rgba(0, 0, 0, 0.5);
+    --error-bg: #fee;
+    --error-text: #c33;
+    --code-bg: rgba(0, 0, 0, 0.08);
+    --on-primary: #ffffff;
+    --on-secondary: #ffffff;
+    --on-danger: #ffffff;
+    --on-text-light: #ffffff;
+}
+
+[data-theme="dark"] {
+    --primary-color: #6ba8e8;
+    --primary-hover: #5a97d7;
+    --secondary-color: #66d98a;
+    --secondary-hover: #55c879;
+    --danger-color: #ff7b7b;
+    --danger-hover: #ff6b6b;
+    --neutral-hover: #666666;
+    --background-color: #1a1a2e;
+    --card-background: #16213e;
+    --text-color: #e0e0e0;
+    --text-light: #a0a0a0;
+    --border-color: #2a2a4a;
+    --input-bg: #0f1829;
+    --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    --shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.4);
+    --modal-overlay: rgba(0, 0, 0, 0.7);
+    --error-bg: #4a1a1a;
+    --error-text: #ff8888;
+    --code-bg: rgba(255, 255, 255, 0.1);
+}
+
+/* Theme toggle styles */
+.theme-toggle {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 100;
+}
+
+.theme-btn {
+    background: var(--card-background);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 8px 14px;
+    cursor: pointer;
+    font-size: 18px;
+    color: var(--text-color);
+    box-shadow: var(--shadow);
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.theme-btn:hover {
+    box-shadow: var(--shadow-hover);
+    transform: translateY(-1px);
+}
+
+.theme-btn .theme-label {
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.theme-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    background: var(--card-background);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: var(--shadow-hover);
+    overflow: hidden;
+    min-width: 140px;
+    display: none;
+    z-index: 101;
+}
+
+.theme-dropdown.show {
+    display: block;
+    animation: dropdownFadeIn 0.15s ease-out;
+}
+
+@keyframes dropdownFadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.theme-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text-color);
+    transition: background-color 0.15s;
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+}
+
+.theme-option:hover {
+    background-color: var(--background-color);
+}
+
+.theme-option.active {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+.theme-option .theme-icon {
+    font-size: 16px;
+    width: 20px;
+    text-align: center;
 }
 
 * {
@@ -69,6 +192,8 @@ header p {
     font-size: 16px;
     border: 2px solid var(--border-color);
     border-radius: 8px;
+    background-color: var(--input-bg);
+    color: var(--text-color);
     transition: border-color 0.3s;
 }
 
@@ -81,7 +206,7 @@ header p {
     padding: 12px 24px;
     font-size: 16px;
     background-color: var(--primary-color);
-    color: white;
+    color: var(--on-primary);
     border: none;
     border-radius: 8px;
     cursor: pointer;
@@ -89,7 +214,7 @@ header p {
 }
 
 #queryBtn:hover {
-    background-color: #357abd;
+    background-color: var(--primary-hover);
 }
 
 #queryBtn:active {
@@ -122,8 +247,8 @@ header p {
 }
 
 .error-message {
-    background-color: #fee;
-    color: #c33;
+    background-color: var(--error-bg);
+    color: var(--error-text);
     padding: 10px 15px;
     border-radius: 6px;
     margin-top: 10px;
@@ -196,7 +321,7 @@ header p {
 
 .word-counter {
     background: var(--primary-color);
-    color: white;
+    color: var(--on-primary);
     padding: 4px 12px;
     border-radius: 15px;
     font-size: 0.9em;
@@ -210,7 +335,7 @@ header p {
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
+    background-color: var(--modal-overlay);
     z-index: 1000;
     display: flex;
     justify-content: center;
@@ -239,8 +364,8 @@ header p {
 .edit-btn {
     padding: 10px 20px;
     font-size: 14px;
-    background-color: #4a90e2;
-    color: white;
+    background-color: var(--primary-color);
+    color: var(--on-primary);
     border: none;
     border-radius: 6px;
     cursor: pointer;
@@ -249,7 +374,7 @@ header p {
 }
 
 .edit-btn:hover {
-    background-color: #357abd;
+    background-color: var(--primary-hover);
 }
 
 .edit-btn:active {
@@ -259,8 +384,8 @@ header p {
 .delete-btn {
     padding: 10px 20px;
     font-size: 14px;
-    background-color: #ff6b6b;
-    color: white;
+    background-color: var(--danger-color);
+    color: var(--on-danger);
     border: none;
     border-radius: 6px;
     cursor: pointer;
@@ -268,7 +393,7 @@ header p {
 }
 
 .delete-btn:hover {
-    background-color: #ff5252;
+    background-color: var(--danger-hover);
 }
 
 .delete-btn:active {
@@ -436,8 +561,8 @@ textarea.form-input {
 
 .remove-btn {
     padding: 6px 12px;
-    background-color: #ff6b6b;
-    color: white;
+    background-color: var(--danger-color);
+    color: var(--on-danger);
     border: none;
     border-radius: 4px;
     cursor: pointer;
@@ -446,13 +571,13 @@ textarea.form-input {
 }
 
 .remove-btn:hover {
-    background-color: #ff5252;
+    background-color: var(--danger-hover);
 }
 
 .add-btn {
     padding: 8px 16px;
     background-color: var(--secondary-color);
-    color: white;
+    color: var(--on-secondary);
     border: none;
     border-radius: 4px;
     cursor: pointer;
@@ -461,7 +586,7 @@ textarea.form-input {
 }
 
 .add-btn:hover {
-    background-color: #45a049;
+    background-color: var(--secondary-hover);
 }
 
 .form-actions {
@@ -474,7 +599,7 @@ textarea.form-input {
 .save-btn {
     padding: 10px 20px;
     background-color: var(--secondary-color);
-    color: white;
+    color: var(--on-secondary);
     border: none;
     border-radius: 6px;
     cursor: pointer;
@@ -483,13 +608,13 @@ textarea.form-input {
 }
 
 .save-btn:hover {
-    background-color: #45a049;
+    background-color: var(--secondary-hover);
 }
 
 .cancel-btn {
     padding: 10px 20px;
     background-color: var(--text-light);
-    color: white;
+    color: var(--on-text-light);
     border: none;
     border-radius: 6px;
     cursor: pointer;
@@ -498,7 +623,7 @@ textarea.form-input {
 }
 
 .cancel-btn:hover {
-    background-color: #555;
+    background-color: var(--neutral-hover);
 }
 
 .word-stats {
@@ -540,7 +665,7 @@ textarea.form-input {
 .login-btn {
     padding: 6px 12px;
     background-color: var(--primary-color);
-    color: white;
+    color: var(--on-primary);
     border: none;
     border-radius: 4px;
     cursor: pointer;
@@ -549,13 +674,13 @@ textarea.form-input {
 }
 
 .login-btn:hover {
-    background-color: #357abd;
+    background-color: var(--primary-hover);
 }
 
 .logout-btn {
     padding: 6px 12px;
     background-color: var(--text-light);
-    color: white;
+    color: var(--on-text-light);
     border: none;
     border-radius: 4px;
     cursor: pointer;
@@ -564,7 +689,7 @@ textarea.form-input {
 }
 
 .logout-btn:hover {
-    background-color: #555;
+    background-color: var(--neutral-hover);
 }
 
 /* 认证弹窗样式 */
@@ -604,7 +729,7 @@ textarea.form-input {
     width: 60px;
     height: 60px;
     background-color: var(--primary-color);
-    color: white;
+    color: var(--on-primary);
     border: none;
     border-radius: 50%;
     font-size: 24px;
@@ -643,8 +768,8 @@ textarea.form-input {
     position: absolute;
     top: 5px;
     right: 5px;
-    background-color: #ff6b6b;
-    color: white;
+    background-color: var(--danger-color);
+    color: var(--on-danger);
     border: none;
     border-radius: 50%;
     width: 24px;
@@ -657,7 +782,7 @@ textarea.form-input {
 }
 
 .message-delete-btn:hover {
-    background-color: #ff5252;
+    background-color: var(--danger-hover);
 }
 
 .chat-header {
@@ -681,14 +806,15 @@ textarea.form-input {
     border: 1px solid var(--border-color);
     border-radius: 4px;
     font-size: 12px;
-    background-color: white;
+    background-color: var(--input-bg);
+    color: var(--text-color);
     flex: 1;
 }
 
 .clear-btn {
     padding: 5px 10px;
-    background-color: #ff6b6b;
-    color: white;
+    background-color: var(--danger-color);
+    color: var(--on-danger);
     border: none;
     border-radius: 4px;
     cursor: pointer;
@@ -698,7 +824,7 @@ textarea.form-input {
 }
 
 .clear-btn:hover {
-    background-color: #ff5252;
+    background-color: var(--danger-hover);
 }
 
 .chat-messages {
@@ -723,13 +849,13 @@ textarea.form-input {
 
 .chat-message.user {
     background-color: var(--primary-color);
-    color: white;
+    color: var(--on-primary);
     margin-left: auto;
     text-align: right;
 }
 
 .chat-message.ai {
-    background-color: white;
+    background-color: var(--card-background);
     color: var(--text-color);
     margin-right: auto;
     border: 1px solid var(--border-color);
@@ -747,7 +873,7 @@ textarea.form-input {
     padding: 15px;
     gap: 10px;
     border-top: 1px solid var(--border-color);
-    background-color: white;
+    background-color: var(--card-background);
 }
 
 .chat-input {
@@ -756,6 +882,8 @@ textarea.form-input {
     border: 2px solid var(--border-color);
     border-radius: 6px;
     font-size: 14px;
+    background-color: var(--input-bg);
+    color: var(--text-color);
 }
 
 .chat-input:focus {
@@ -766,7 +894,7 @@ textarea.form-input {
 .send-btn {
     padding: 10px 20px;
     background-color: var(--primary-color);
-    color: white;
+    color: var(--on-primary);
     border: none;
     border-radius: 6px;
     cursor: pointer;
@@ -774,7 +902,7 @@ textarea.form-input {
 }
 
 .send-btn:hover {
-    background-color: #357abd;
+    background-color: var(--primary-hover);
 }
 
 /* 响应式设计 */
@@ -815,6 +943,13 @@ textarea.form-input {
         position: static;
         margin-top: 10px;
         justify-content: center;
+    }
+
+    .theme-toggle {
+        position: static;
+        margin-bottom: 10px;
+        display: flex;
+        justify-content: flex-start;
     }
 
     header {

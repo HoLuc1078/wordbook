@@ -13,6 +13,23 @@
 <body>
     <div class="container">
         <header>
+            <div class="theme-toggle">
+                <button class="theme-btn" id="themeBtn" onclick="toggleThemeDropdown()">
+                    <span class="theme-icon" id="themeIcon">🌓</span>
+                    <span class="theme-label" id="themeLabel">跟随系统</span>
+                </button>
+                <div class="theme-dropdown" id="themeDropdown">
+                    <button class="theme-option" data-value="light" onclick="setTheme('light')">
+                        <span class="theme-icon">☀️</span> 浅色
+                    </button>
+                    <button class="theme-option" data-value="dark" onclick="setTheme('dark')">
+                        <span class="theme-icon">🌙</span> 深色
+                    </button>
+                    <button class="theme-option active" data-value="system" onclick="setTheme('system')">
+                        <span class="theme-icon">🌓</span> 跟随系统
+                    </button>
+                </div>
+            </div>
             <h1>📚 英语单词本</h1>
             <p>记录和复习你的英语单词</p>
             <div id="userStatus" class="user-status">
