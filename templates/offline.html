@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>离线单词本</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="theme-toggle">
+                <button class="theme-btn" id="themeBtn" onclick="toggleThemeDropdown()">
+                    <span class="theme-icon" id="themeIcon">🌓</span>
+                    <span class="theme-label" id="themeLabel">跟随系统</span>
+                </button>
+                <div class="theme-dropdown" id="themeDropdown">
+                    <button class="theme-option" data-value="light" onclick="setTheme('light')">
+                        <span class="theme-icon">☀️</span> 浅色
+                    </button>
+                    <button class="theme-option" data-value="dark" onclick="setTheme('dark')">
+                        <span class="theme-icon">🌙</span> 深色
+                    </button>
+                    <button class="theme-option active" data-value="system" onclick="setTheme('system')">
+                        <span class="theme-icon">🌓</span> 跟随系统
+                    </button>
+                </div>
+            </div>
+            <h1>📴 离线单词本</h1>
+            <p>上传 JSON 文件即可离线浏览单词</p>
+            <div class="offline-nav">
+                <a href="/" class="back-link">← 返回在线版</a>
+            </div>
+        </header>
+
+        <!-- 文件上传区域 -->
+        <section class="offline-upload-section" id="uploadSection">
+            <div class="upload-zone" id="uploadZone">
+                <div class="upload-icon">📂</div>
+                <p class="upload-text">拖放 JSON 文件到此处</p>
+                <p class="upload-hint">或点击选择文件</p>
+                <input type="file" id="fileInput" accept=".json" style="display: none;">
+            </div>
+            <div class="upload-error" id="uploadError" style="display: none;"></div>
+        </section>
+
+        <!-- 单词列表区域 -->
+        <section class="words-section" id="wordsSection" style="display: none;">
+            <div class="words-section-header">
+                <h2>单词列表 <span id="wordCount" class="word-count"></span></h2>
+                <div class="words-controls">
+                    <input type="text" id="searchInput" placeholder="🔍 搜索单词..." class="search-input">
+                    <select id="sortSelect" class="sort-select">
+                        <option value="counter">按查询次数</option>
+                        <option value="alpha">按字母顺序</option>
+                    </select>
+                    <button class="change-file-btn" onclick="resetFile()">📂 更换文件</button>
+                </div>
+            </div>
+            <div id="wordsList" class="words-list">
+                <div class="empty-state">
+                    <p>暂无单词</p>
+                </div>
+            </div>
+            <div id="pagination" class="pagination" style="display: none;">
+                <button id="prevPageBtn" class="page-btn" onclick="changePage(-1)">上一页</button>
+                <span id="pageInfo" class="page-info"></span>
+                <button id="nextPageBtn" class="page-btn" onclick="changePage(1)">下一页</button>
+            </div>
+        </section>
+
+        <!-- 单词详情弹窗 -->
+        <div id="wordModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <span class="close-btn" onclick="closeModal()">&times;</span>
+                <div id="modalBody"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/offline.js') }}"></script>
+</body>
+</html>

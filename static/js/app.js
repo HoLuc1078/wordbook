@@ -118,6 +118,35 @@ let chatHistory = []; // 聊天历史（从云端加载）
 const chatMessages = document.getElementById('chatMessages');
 const chatInput = document.getElementById('chatInput');
 
+// 批量查询 & 导入导出 DOM
+let isBatchMode = false;
+const singleInputMode = document.getElementById('singleInputMode');
+const batchInputMode = document.getElementById('batchInputMode');
+const batchWordInput = document.getElementById('batchWordInput');
+const batchQueryBtn = document.getElementById('batchQueryBtn');
+const clearBatchBtn = document.getElementById('clearBatchBtn');
+const batchImportTxtBtn = document.getElementById('batchImportTxtBtn');
+const batchTxtFile = document.getElementById('batchTxtFile');
+const batchProgress = document.getElementById('batchProgress');
+const batchProgressBar = document.getElementById('batchProgressBar');
+const batchProgressText = document.getElementById('batchProgressText');
+const toggleModeBtn = document.getElementById('toggleModeBtn');
+const exportDropdown = document.getElementById('exportDropdown');
+const importModal = document.getElementById('importModal');
+const importUploadZone = document.getElementById('importUploadZone');
+const importFile = document.getElementById('importFile');
+const importPreview = document.getElementById('importPreview');
+const importPreviewCount = document.getElementById('importPreviewCount');
+const importPreviewType = document.getElementById('importPreviewType');
+const importPreviewList = document.getElementById('importPreviewList');
+const importError = document.getElementById('importError');
+const importProgress = document.getElementById('importProgress');
+const importProgressBar = document.getElementById('importProgressBar');
+const importProgressText = document.getElementById('importProgressText');
+const importSubmitBtn = document.getElementById('importSubmitBtn');
+let parsedImportWords = null; // 解析后的 JSON/CSV 数据
+let parsedImportFormat = null; // 'json' 或 'csv'
+
 // 初始化
 document.addEventListener('DOMContentLoaded', function() {
     checkLoginStatus();
@@ -150,6 +179,80 @@ function setupEventListeners() {
             if (e.target === aiChatModal) {
                 closeAIChatModal();
             }
+        });
+    }
+
+    // 批量查询按钮
+    if (batchQueryBtn) {
+        batchQueryBtn.addEventListener('click', handleBatchQuery);
+    }
+    // 清空批量输入
+    if (clearBatchBtn) {
+        clearBatchBtn.addEventListener('click', function() {
+            batchWordInput.value = '';
+            batchWordInput.focus();
+        });
+    }
+    // 批量输入框 Ctrl+Enter 触发查询
+    if (batchWordInput) {
+        batchWordInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && e.ctrlKey) {
+                e.preventDefault();
+                handleBatchQuery();
+            }
+        });
+    }
+    // 批量查询区 — 导入 TXT 按钮
+    if (batchImportTxtBtn && batchTxtFile) {
+        batchImportTxtBtn.addEventListener('click', function(e) {
+            if (e.target !== batchTxtFile) batchTxtFile.click();
+        });
+        batchTxtFile.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                batchWordInput.value = ev.target.result;
+                // 将光标移到末尾
+                batchWordInput.scrollTop = batchWordInput.scrollHeight;
+            };
+            reader.readAsText(file);
+        });
+    }
+    // 点击其他地方关闭导出下拉
+    document.addEventListener('click', function(e) {
+        if (exportDropdown && !e.target.closest('.import-export-actions')) {
+            exportDropdown.style.display = 'none';
+        }
+    });
+    // 导入弹窗 — 文件上传区域点击
+    if (importUploadZone) {
+        importUploadZone.addEventListener('click', function(e) {
+            if (e.target !== importFile) importFile.click();
+        });
+    }
+    // 导入弹窗 — 文件选择
+    if (importFile) {
+        importFile.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) handleImportFileSelect(file);
+        });
+    }
+    // 导入弹窗 — 拖放
+    if (importUploadZone) {
+        importUploadZone.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            importUploadZone.classList.add('drag-over');
+        });
+        importUploadZone.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            importUploadZone.classList.remove('drag-over');
+        });
+        importUploadZone.addEventListener('drop', function(e) {
+            e.preventDefault();
+            importUploadZone.classList.remove('drag-over');
+            const file = e.dataTransfer.files[0];
+            if (file) handleImportFileSelect(file);
         });
     }
 
@@ -1472,5 +1575,526 @@ async function healthCheck() {
         console.log('Health Check:', data);
     } catch (error) {
         console.error('Health Check Failed:', error);
+    }
+}
+
+// ==================== 批量查询 & 导入导出 ====================
+
+/**
+ * 切换单行/批量输入模式
+ */
+function toggleInputMode() {
+    isBatchMode = !isBatchMode;
+    if (isBatchMode) {
+        singleInputMode.style.display = 'none';
+        batchInputMode.style.display = 'block';
+        toggleModeBtn.textContent = '🔤 切换到单词模式';
+        batchWordInput.focus();
+    } else {
+        singleInputMode.style.display = 'block';
+        batchInputMode.style.display = 'none';
+        toggleModeBtn.textContent = '📋 切换到批量模式';
+        wordInput.focus();
+    }
+}
+
+/**
+ * 批量查询单词
+ */
+async function handleBatchQuery() {
+    const text = batchWordInput.value.trim();
+    if (!text) {
+        showError('请输入至少一个单词');
+        return;
+    }
+
+    // 解析单词列表
+    const words = text.split('\n')
+        .map(w => w.trim())
+        .filter(w => w.length > 0);
+
+    if (words.length === 0) {
+        showError('请输入至少一个单词');
+        return;
+    }
+
+    if (words.length > 50) {
+        showError('单次最多查询50个单词');
+        return;
+    }
+
+    // 显示进度条
+    batchProgress.style.display = 'flex';
+    batchProgressBar.style.width = '0%';
+    batchProgressText.textContent = `准备查询 ${words.length} 个单词...`;
+    batchQueryBtn.disabled = true;
+
+    hideError();
+    hideSuccess();
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/words/batch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ words: words })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            batchProgressBar.style.width = '100%';
+            batchProgressText.textContent = data.message;
+
+            // 刷新单词列表
+            await loadWordsList();
+
+            // 清空输入
+            batchWordInput.value = '';
+
+            // 显示详细结果
+            const r = data.results;
+            const parts = [];
+            if (r.success.length > 0) parts.push(`✅ 新增 ${r.success.length} 个`);
+            if (r.skipped.length > 0) parts.push(`🔄 已存在 ${r.skipped.length} 个`);
+            if (r.failed.length > 0) parts.push(`❌ 失败 ${r.failed.length} 个`);
+            showSuccess(parts.join('，'));
+
+            // 2秒后隐藏进度条
+            setTimeout(() => {
+                batchProgress.style.display = 'none';
+            }, 2000);
+        } else {
+            batchProgress.style.display = 'none';
+            showError(data.error || '批量查询失败');
+        }
+    } catch (error) {
+        batchProgress.style.display = 'none';
+        showError('网络错误，请检查网络连接');
+        console.error('Batch query error:', error);
+    } finally {
+        batchQueryBtn.disabled = false;
+    }
+}
+
+// ==================== 导入（JSON 文件） ====================
+
+/**
+ * 打开导入弹窗
+ */
+function openImportModal() {
+    parsedImportWords = null;
+    if (importFile) importFile.value = '';
+    if (importProgress) importProgress.style.display = 'none';
+    if (importPreview) importPreview.style.display = 'none';
+    if (importError) importError.style.display = 'none';
+    if (importSubmitBtn) importSubmitBtn.disabled = true;
+    importModal.style.display = 'flex';
+}
+
+/**
+ * 关闭导入弹窗
+ */
+function closeImportModal() {
+    importModal.style.display = 'none';
+    parsedImportWords = null;
+}
+
+/**
+ * 处理导入弹窗中的文件选择（支持 JSON 和 CSV）
+ */
+function handleImportFileSelect(file) {
+    hideImportError();
+    const fname = file.name.toLowerCase();
+
+    if (!fname.endsWith('.json') && !fname.endsWith('.csv')) {
+        showImportError('请选择 .json 或 .csv 文件');
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const text = e.target.result;
+
+        if (fname.endsWith('.csv')) {
+            // CSV 解析
+            try {
+                const words = parseCsvImport(text);
+                if (words.length === 0) {
+                    showImportError('CSV 中未找到有效单词数据');
+                    return;
+                }
+                if (words.length > 200) {
+                    showImportError('单次最多导入200个单词，当前文件包含 ' + words.length + ' 个');
+                    return;
+                }
+                parsedImportWords = words;
+                parsedImportFormat = 'csv';
+                showImportPreview(words, 'CSV');
+                if (importSubmitBtn) importSubmitBtn.disabled = false;
+            } catch (err) {
+                showImportError('CSV 解析失败: ' + err.message);
+            }
+        } else {
+            // JSON 解析
+            try {
+                const data = JSON.parse(text);
+                const words = extractImportWords(data);
+                if (words.length === 0) {
+                    showImportError('文件中未找到有效单词数据');
+                    return;
+                }
+                if (words.length > 200) {
+                    showImportError('单次最多导入200个单词，当前文件包含 ' + words.length + ' 个');
+                    return;
+                }
+                parsedImportWords = words;
+                parsedImportFormat = 'json';
+                showImportPreview(words, 'JSON');
+                if (importSubmitBtn) importSubmitBtn.disabled = false;
+            } catch (err) {
+                showImportError('JSON 解析失败: ' + err.message);
+            }
+        }
+    };
+    reader.onerror = function() {
+        showImportError('文件读取失败');
+    };
+    reader.readAsText(file);
+}
+
+/**
+ * 解析 CSV 文本为单词列表
+ */
+function parseCsvImport(text) {
+    const lines = text.split('\n').filter(l => l.trim());
+    if (lines.length < 2) return [];
+
+    // 解析 CSV 行（简单实现，处理引号包裹的字段）
+    function parseCsvLine(line) {
+        const result = [];
+        let current = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (inQuotes) {
+                if (ch === '"' && line[i + 1] === '"') {
+                    current += '"';
+                    i++;
+                } else if (ch === '"') {
+                    inQuotes = false;
+                } else {
+                    current += ch;
+                }
+            } else {
+                if (ch === '"') {
+                    inQuotes = true;
+                } else if (ch === ',') {
+                    result.push(current.trim());
+                    current = '';
+                } else {
+                    current += ch;
+                }
+            }
+        }
+        result.push(current.trim());
+        return result;
+    }
+
+    const headers = parseCsvLine(lines[0]);
+    // 列名映射
+    const colMap = {};
+    const wordCols = ['word', '单词'];
+    const meaningCols = ['meaning', '释义', '翻译'];
+    const phrasesCols = ['phrases', '词组'];
+    const exampleCols = ['example', '例句'];
+    const noteCols = ['note', '备注'];
+    const counterCols = ['counter', '查询次数'];
+
+    function findCol(names) {
+        for (const n of names) {
+            const idx = headers.findIndex(h => h.toLowerCase() === n.toLowerCase());
+            if (idx >= 0) return idx;
+        }
+        return -1;
+    }
+
+    const wordIdx = findCol(wordCols);
+    const meaningIdx = findCol(meaningCols);
+    const phrasesIdx = findCol(phrasesCols);
+    const exampleIdx = findCol(exampleCols);
+    const noteIdx = findCol(noteCols);
+    const counterIdx = findCol(counterCols);
+
+    if (wordIdx < 0) {
+        throw new Error('CSV 缺少 "word" 或 "单词" 列');
+    }
+
+    const words = [];
+    for (let i = 1; i < lines.length; i++) {
+        const fields = parseCsvLine(lines[i]);
+        const word = (fields[wordIdx] || '').trim();
+        if (!word) continue;
+
+        let meaning = [];
+        if (meaningIdx >= 0 && fields[meaningIdx]) {
+            meaning = [{ pos: '', translation: fields[meaningIdx] }];
+        }
+
+        let phrases = [];
+        if (phrasesIdx >= 0 && fields[phrasesIdx]) {
+            phrases = [{ phrase: fields[phrasesIdx], meaning: '' }];
+        }
+
+        let example = {};
+        if (exampleIdx >= 0 && fields[exampleIdx]) {
+            example = { en: fields[exampleIdx], zh: '' };
+        }
+
+        const note = (noteIdx >= 0 && fields[noteIdx]) ? fields[noteIdx] : '无';
+        const counter = (counterIdx >= 0 && fields[counterIdx] && /^\d+$/.test(fields[counterIdx]))
+            ? parseInt(fields[counterIdx]) : 1;
+
+        words.push({ word, meaning, phrases, example, note, counter });
+    }
+    return words;
+}
+
+/**
+ * 从 JSON 数据中提取单词列表（兼容多种格式）
+ */
+function extractImportWords(data) {
+    let words;
+    if (Array.isArray(data)) {
+        words = data;
+    } else if (typeof data === 'object' && data !== null) {
+        if (Array.isArray(data.words)) {
+            words = data.words;
+        } else {
+            return [];
+        }
+    } else {
+        return [];
+    }
+    return words.filter(w => w && typeof w === 'object' && w.word && String(w.word).trim());
+}
+
+/**
+ * 显示导入预览
+ */
+function showImportPreview(words, formatLabel) {
+    if (!importPreview || !importPreviewCount || !importPreviewList) return;
+    importPreview.style.display = 'block';
+    importPreviewCount.textContent = `共 ${words.length} 个单词`;
+    if (importPreviewType && formatLabel) {
+        importPreviewType.textContent = formatLabel;
+    }
+    // 最多显示前20个预览
+    const previewWords = words.slice(0, 20);
+    importPreviewList.innerHTML = previewWords.map(w => {
+        const meaningStr = getWordMeaningText(w);
+        return `<div class="preview-item">
+            <span class="preview-word">${w.word}</span>
+            <span class="preview-meaning">${meaningStr || '(无释义)'}</span>
+        </div>`;
+    }).join('');
+    if (words.length > 20) {
+        importPreviewList.innerHTML += `<div class="preview-more">...还有 ${words.length - 20} 个单词</div>`;
+    }
+}
+
+function getWordMeaningText(w) {
+    if (!w.meaning) return '';
+    if (typeof w.meaning === 'string') return w.meaning;
+    if (Array.isArray(w.meaning)) {
+        return w.meaning.map(item => {
+            if (typeof item === 'object') {
+                const pos = item.pos || '';
+                const trans = item.translation || '';
+                return pos ? `${pos} ${trans}` : trans;
+            }
+            return '';
+        }).filter(Boolean).join('；');
+    }
+    if (typeof w.meaning === 'object') {
+        if (Array.isArray(w.meaning.meaning)) {
+            return w.meaning.meaning.map(item => {
+                const pos = item.pos || '';
+                const trans = item.translation || '';
+                return pos ? `${pos} ${trans}` : trans;
+            }).filter(Boolean).join('；');
+        }
+        if (typeof w.meaning.meaning === 'string') return w.meaning.meaning;
+    }
+    return '';
+}
+
+/**
+ * 清除导入预览
+ */
+function clearImportPreview() {
+    parsedImportWords = null;
+    parsedImportFormat = null;
+    if (importFile) importFile.value = '';
+    if (importPreview) importPreview.style.display = 'none';
+    if (importSubmitBtn) importSubmitBtn.disabled = true;
+    hideImportError();
+}
+
+function showImportError(msg) {
+    if (!importError) return;
+    importError.textContent = msg;
+    importError.style.display = 'block';
+}
+
+function hideImportError() {
+    if (!importError) return;
+    importError.style.display = 'none';
+}
+
+/**
+ * 将单词列表转为 CSV 文本
+ */
+function generateCsvFromWords(words) {
+    const headers = ['word', 'meaning', 'phrases', 'example', 'note', 'counter'];
+    const escape = (s) => {
+        const str = String(s ?? '');
+        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+            return '"' + str.replace(/"/g, '""') + '"';
+        }
+        return str;
+    };
+    const lines = [headers.join(',')];
+    for (const w of words) {
+        const meaning = getWordMeaningText(w);
+        const phrases = (w.phrases || []).map(p => p.phrase || '').join('; ');
+        const example = (w.example && w.example.en) ? w.example.en : '';
+        lines.push([
+            escape(w.word || ''),
+            escape(meaning),
+            escape(phrases),
+            escape(example),
+            escape(w.note || '无'),
+            escape(w.counter || 1)
+        ].join(','));
+    }
+    return lines.join('\n');
+}
+
+/**
+ * 处理导入提交
+ */
+async function handleImport() {
+    if (!parsedImportWords || parsedImportWords.length === 0) {
+        showImportError('请先选择有效的文件');
+        return;
+    }
+
+    const formData = new FormData();
+
+    if (parsedImportFormat === 'csv') {
+        // CSV：生成 CSV Blob
+        const csvContent = generateCsvFromWords(parsedImportWords);
+        const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8' });
+        formData.append('file', blob, 'import.csv');
+    } else {
+        // JSON：生成 JSON Blob
+        const jsonStr = JSON.stringify({ words: parsedImportWords }, null, 0);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        formData.append('file', blob, 'import.json');
+    }
+
+    // 显示进度
+    importProgress.style.display = 'flex';
+    importProgressBar.style.width = '0%';
+    importProgressText.textContent = `正在导入 ${parsedImportWords.length} 个单词...`;
+    if (importSubmitBtn) importSubmitBtn.disabled = true;
+
+    hideImportError();
+    hideError();
+    hideSuccess();
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/words/import`, {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            importProgressBar.style.width = '100%';
+            importProgressText.textContent = data.message;
+
+            // 刷新单词列表
+            await loadWordsList();
+
+            const r = data.results;
+            const parts = [];
+            if (r.success.length > 0) parts.push(`✅ 新增 ${r.success.length} 个`);
+            if (r.updated.length > 0) parts.push(`🔄 更新 ${r.updated.length} 个`);
+            if (r.failed.length > 0) parts.push(`❌ 失败 ${r.failed.length} 个`);
+            showSuccess(parts.join('，'));
+
+            // 2秒后关闭弹窗
+            setTimeout(() => {
+                closeImportModal();
+            }, 2000);
+        } else {
+            importProgress.style.display = 'none';
+            if (importSubmitBtn) importSubmitBtn.disabled = false;
+            showImportError(data.error || '导入失败');
+        }
+    } catch (error) {
+        importProgress.style.display = 'none';
+        if (importSubmitBtn) importSubmitBtn.disabled = false;
+        showImportError('网络错误，请检查网络连接');
+        console.error('Import error:', error);
+    }
+}
+
+// ==================== 导出 ====================
+
+/**
+ * 打开/关闭导出下拉菜单
+ */
+function openExportDropdown() {
+    if (exportDropdown.style.display === 'none') {
+        exportDropdown.style.display = 'block';
+    } else {
+        exportDropdown.style.display = 'none';
+    }
+}
+
+/**
+ * 导出单词
+ */
+async function exportWords(format) {
+    exportDropdown.style.display = 'none';
+    try {
+        if (format === 'json') {
+            // JSON 需要 fetch + Blob 下载以触发文件保存
+            const response = await fetch(`${API_BASE_URL}/words/export?format=json`);
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data.error || '导出失败');
+            }
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'wordbook.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showSuccess('JSON 文件已导出');
+        } else {
+            // CSV 直接跳转下载
+            window.location.href = `${API_BASE_URL}/words/export?format=${format}`;
+            showSuccess('CSV 文件已导出');
+        }
+    } catch (error) {
+        showError('导出失败: ' + error.message);
+        console.error('Export error:', error);
     }
 }

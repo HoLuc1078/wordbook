@@ -41,9 +41,44 @@
 
         <!-- 单词输入区域 -->
         <section class="input-section">
-            <div class="input-group">
-                <input type="text" id="wordInput" placeholder="输入英语单词..." autocomplete="off">
-                <button id="queryBtn">查询/添加</button>
+            <!-- 单行查询模式 -->
+            <div id="singleInputMode">
+                <div class="input-group">
+                    <input type="text" id="wordInput" placeholder="输入英语单词..." autocomplete="off">
+                    <button id="queryBtn">查询/添加</button>
+                </div>
+            </div>
+            <!-- 批量查询模式 -->
+            <div id="batchInputMode" style="display: none;">
+                <div class="input-group batch-input-group">
+                    <textarea id="batchWordInput" placeholder="输入英语单词，一词一换行..." class="batch-textarea" rows="5"></textarea>
+                </div>
+                <div class="batch-actions">
+                    <button id="batchQueryBtn" class="batch-btn">🔍 批量查询</button>
+                    <button id="clearBatchBtn" class="batch-clear-btn">清空</button>
+                    <button id="batchImportTxtBtn" class="batch-import-btn">
+                        📄 导入 TXT
+                        <input type="file" id="batchTxtFile" accept=".txt" style="display: none;">
+                    </button>
+                </div>
+                <div id="batchProgress" class="batch-progress" style="display: none;">
+                    <div class="batch-progress-bar">
+                        <div id="batchProgressBar" class="batch-progress-fill"></div>
+                    </div>
+                    <span id="batchProgressText" class="batch-progress-text"></span>
+                </div>
+            </div>
+            <div class="input-mode-toggle">
+                <button id="toggleModeBtn" class="mode-toggle-btn" onclick="toggleInputMode()">📋 切换到批量模式</button>
+                <div class="import-export-actions">
+                    <button class="import-btn" onclick="openImportModal()">📥 导入 JSON</button>
+                    <button class="export-btn" onclick="openExportDropdown()">📤 导出</button>
+                    <div id="exportDropdown" class="export-dropdown" style="display: none;">
+                        <button onclick="exportWords('json')">导出为 JSON</button>
+                        <button onclick="exportWords('csv')">导出为 CSV</button>
+                    </div>
+                    <a href="/offline" class="offline-link" title="离线浏览">📴 离线模式</a>
+                </div>
             </div>
             <div id="loadingIndicator" class="loading" style="display: none;">
                 <span>查询中...</span>
@@ -172,6 +207,49 @@
                 <div class="chat-input-area">
                     <input type="text" id="chatInput" placeholder="输入消息..." class="chat-input" onkeypress="handleChatKeyPress(event)">
                     <button class="send-btn" onclick="sendChatMessage()">发送</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 导入弹窗 -->
+    <div id="importModal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 500px;">
+            <span class="close-btn" onclick="closeImportModal()">&times;</span>
+            <div class="word-edit-form">
+                <h3>📥 导入单词</h3>
+                <div class="form-group">
+                    <label>选择文件（JSON / CSV）：</label>
+                    <div class="import-upload-zone" id="importUploadZone">
+                        <div class="import-upload-icon">📥</div>
+                        <p class="import-upload-text">拖放文件到此处</p>
+                        <p class="import-upload-hint">支持 .json 和 .csv 格式</p>
+                        <div class="import-upload-formats">
+                            <span class="format-tag">JSON</span>
+                            <span class="format-tag">CSV</span>
+                        </div>
+                        <input type="file" id="importFile" accept=".json,.csv" style="display: none;">
+                    </div>
+                </div>
+                <!-- 解析预览区域 -->
+                <div id="importPreview" class="import-preview" style="display: none;">
+                    <div class="import-preview-header">
+                        <span id="importPreviewCount"></span>
+                        <span id="importPreviewType" class="preview-file-type"></span>
+                        <button class="clear-preview-btn" onclick="clearImportPreview()">清除</button>
+                    </div>
+                    <div id="importPreviewList" class="import-preview-list"></div>
+                </div>
+                <div id="importError" class="error-message" style="display: none; margin-top: 10px;"></div>
+                <div id="importProgress" class="batch-progress" style="display: none;">
+                    <div class="batch-progress-bar">
+                        <div id="importProgressBar" class="batch-progress-fill"></div>
+                    </div>
+                    <span id="importProgressText" class="batch-progress-text"></span>
+                </div>
+                <div class="form-actions">
+                    <button class="save-btn" id="importSubmitBtn" onclick="handleImport()" disabled>开始导入</button>
+                    <button class="cancel-btn" onclick="closeImportModal()">取消</button>
                 </div>
             </div>
         </div>

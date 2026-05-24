@@ -246,6 +246,352 @@ def index():
     """渲染主页"""
     return render_template('index.html')
 
+@app.route('/api/words/batch', methods=['POST'])
+@login_required
+@rate_limit(max_requests=10, window_seconds=60)
+def batch_add_words():
+    """
+    批量添加单词
+    POST /api/words/batch
+    Body: {"words": ["word1", "word2", ...]}
+    逐个查询，返回成功/失败列表
+    """
+    try:
+        data = request.get_json()
+        if not data or 'words' not in data:
+            return jsonify({'error': '缺少 words 参数'}), 400
+
+        words = data['words']
+        if not isinstance(words, list) or len(words) == 0:
+            return jsonify({'error': 'words 必须是非空数组'}), 400
+
+        # 限制批量数量
+        if len(words) > 50:
+            return jsonify({'error': '单次最多查询50个单词'}), 400
+
+        user_id = session['user_id']
+        results = {'success': [], 'failed': [], 'skipped': []}
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            for raw_word in words:
+                word = raw_word.strip().lower()
+                if not word:
+                    continue
+
+                # 检查是否已存在
+                cursor.execute("SELECT * FROM words WHERE word = ? AND user_id = ?", (word, user_id))
+                existing = cursor.fetchone()
+
+                if existing:
+                    cursor.execute(
+                        "UPDATE words SET counter = counter + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                        (existing['id'],)
+                    )
+                    conn.commit()
+                    cursor.execute("SELECT * FROM words WHERE id = ?", (existing['id'],))
+                    updated = cursor.fetchone()
+                    results['skipped'].append({
+                        'word': word,
+                        'message': '单词已存在，计数器已更新',
+                        'counter': updated['counter']
+                    })
+                else:
+                    try:
+                        word_info = fetch_word_info_from_longcat(word)
+                        meaning_json = json.dumps(word_info, ensure_ascii=False)
+                        note = word_info.get('note', '无')
+
+                        cursor.execute(
+                            "INSERT INTO words (word, user_id, meaning, note) VALUES (?, ?, ?, ?)",
+                            (word, user_id, meaning_json, note)
+                        )
+                        conn.commit()
+
+                        word_id = cursor.lastrowid
+                        cursor.execute("SELECT * FROM words WHERE id = ?", (word_id,))
+                        new_word = cursor.fetchone()
+                        results['success'].append({
+                            'word': word,
+                            'id': new_word['id'],
+                            'counter': new_word['counter']
+                        })
+                    except Exception as e:
+                        results['failed'].append({
+                            'word': word,
+                            'error': str(e)
+                        })
+
+        return jsonify({
+            'message': f'批量查询完成：成功 {len(results["success"])} 个，已存在 {len(results["skipped"])} 个，失败 {len(results["failed"])} 个',
+            'results': results
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': f'服务器错误: {str(e)}'}), 500
+
+
+@app.route('/api/words/export', methods=['GET'])
+@login_required
+def export_words():
+    """
+    导出单词列表
+    GET /api/words/export?format=json|csv
+    默认 json 格式
+    """
+    try:
+        fmt = request.args.get('format', 'json').lower()
+        user_id = session['user_id']
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, word, counter, meaning, note, created_at
+                FROM words
+                WHERE user_id = ?
+                ORDER BY counter DESC, word ASC
+            """, (user_id,))
+
+            rows = cursor.fetchall()
+
+        if fmt == 'json':
+            words_list = []
+            for row in rows:
+                meaning_data = json.loads(row['meaning']) if row['meaning'] else {}
+                # 标准化 meaning 为数组格式
+                if isinstance(meaning_data, list):
+                    meaning_arr = meaning_data
+                elif isinstance(meaning_data, dict) and 'meaning' in meaning_data:
+                    meaning_arr = meaning_data['meaning']
+                else:
+                    meaning_arr = []
+
+                phrases = meaning_data.get('phrases', []) if isinstance(meaning_data, dict) else []
+                example = meaning_data.get('example', {}) if isinstance(meaning_data, dict) else {}
+
+                words_list.append({
+                    'word': row['word'],
+                    'meaning': meaning_arr,
+                    'phrases': phrases,
+                    'example': example,
+                    'note': row['note'] or '无',
+                    'counter': row['counter']
+                })
+
+            export_data = {
+                'version': '1.0',
+                'exported_at': datetime.now().isoformat(),
+                'words': words_list
+            }
+
+            content = json.dumps(export_data, ensure_ascii=False, indent=2)
+            mimetype = 'application/json; charset=utf-8'
+            filename = 'wordbook.json'
+
+        else:
+            # CSV format
+            import csv
+            import io
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(['单词', '释义', '查询次数', '备注', '添加时间'])
+            for row in rows:
+                meaning_data = json.loads(row['meaning']) if row['meaning'] else {}
+                if isinstance(meaning_data, list):
+                    meaning_text = '；'.join(
+                        f"{m.get('pos', '')} {m.get('translation', '')}".strip()
+                        for m in meaning_data if isinstance(m, dict)
+                    )
+                elif isinstance(meaning_data, dict) and 'meaning' in meaning_data:
+                    meaning_text = '；'.join(
+                        f"{m.get('pos', '')} {m.get('translation', '')}".strip()
+                        for m in meaning_data['meaning'] if isinstance(m, dict)
+                    )
+                else:
+                    meaning_text = str(meaning_data)
+                writer.writerow([
+                    row['word'],
+                    meaning_text,
+                    row['counter'],
+                    row['note'] or '无',
+                    row['created_at']
+                ])
+            content = output.getvalue()
+            mimetype = 'text/csv; charset=utf-8-sig'
+            filename = 'wordbook.csv'
+
+        from flask import Response
+        response = Response(content, mimetype=mimetype)
+        response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+        return response
+
+    except Exception as e:
+        return jsonify({'error': f'服务器错误: {str(e)}'}), 500
+
+
+def _import_word_item(item, user_id, cursor):
+    """
+    将一个单词 dict 写入数据库（不调用 AI）
+    返回: ('success', dict) | ('updated', dict) | ('failed', dict)
+    """
+    if not isinstance(item, dict):
+        return None
+
+    word = str(item.get('word', '')).strip().lower()
+    if not word:
+        return None
+
+    meaning_raw = item.get('meaning', [])
+    phrases_raw = item.get('phrases', [])
+    example_raw = item.get('example', {})
+    note_raw = item.get('note', '无')
+
+    # 标准化 meaning
+    if isinstance(meaning_raw, list):
+        meaning_arr = meaning_raw
+    elif isinstance(meaning_raw, str):
+        meaning_arr = [{'pos': '', 'translation': meaning_raw}]
+    else:
+        meaning_arr = []
+
+    meaning_to_save = meaning_raw
+    if isinstance(meaning_arr, list) and not isinstance(meaning_raw, dict):
+        meaning_to_save = {
+            'meaning': meaning_arr,
+            'phrases': phrases_raw if isinstance(phrases_raw, list) else [],
+            'example': example_raw if isinstance(example_raw, dict) else {}
+        }
+
+    meaning_json = json.dumps(meaning_to_save, ensure_ascii=False)
+    note = str(note_raw) if note_raw else '无'
+
+    cursor.execute("SELECT * FROM words WHERE word = ? AND user_id = ?", (word, user_id))
+    existing = cursor.fetchone()
+
+    if existing:
+        cursor.execute(
+            "UPDATE words SET meaning = ?, note = ?, counter = counter + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (meaning_json, note, existing['id'])
+        )
+        cursor.execute("SELECT counter FROM words WHERE id = ?", (existing['id'],))
+        updated_counter = cursor.fetchone()['counter']
+        return ('updated', {'word': word, 'counter': updated_counter})
+    else:
+        counter = item.get('counter', 1)
+        cursor.execute(
+            "INSERT INTO words (word, user_id, meaning, note, counter) VALUES (?, ?, ?, ?, ?)",
+            (word, user_id, meaning_json, note, counter)
+        )
+        return ('success', {'word': word, 'id': cursor.lastrowid, 'counter': counter})
+
+
+@app.route('/api/words/import', methods=['POST'])
+@login_required
+@rate_limit(max_requests=10, window_seconds=60)
+def import_words():
+    """
+    从 JSON / CSV 文件导入单词（直接写入数据库，不调用 AI）
+    POST /api/words/import  (multipart/form-data, file field: 'file')
+    JSON 格式：
+      1. {"version":"1.0","words":[{word,meaning,phrases,example,note,counter},...]}
+      2. {"words":[{word,meaning,...},...]}
+      3. [{word,meaning,...},...]
+    CSV 格式：
+      首行为列名，支持：word/单词, meaning/释义/翻译, phrases/词组, example/例句, note/备注, counter/查询次数
+    """
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': '请上传文件'}), 400
+
+        file = request.files['file']
+        if not file or file.filename == '':
+            return jsonify({'error': '请选择文件'}), 400
+
+        filename = file.filename.lower()
+        if not (filename.endswith('.json') or filename.endswith('.csv')):
+            return jsonify({'error': '只支持 .json 或 .csv 文件'}), 400
+
+        raw = file.read().decode('utf-8')
+
+        if filename.endswith('.csv'):
+            import csv
+            import io
+            reader = csv.DictReader(io.StringIO(raw))
+            # 列名映射
+            words = []
+            for row in reader:
+                # 找 word 列
+                word_val = (row.get('word') or row.get('单词') or '').strip()
+                if not word_val:
+                    continue
+                meaning_val = (row.get('meaning') or row.get('释义') or row.get('翻译') or '').strip()
+                phrases_val = (row.get('phrases') or row.get('词组') or '').strip()
+                example_val = (row.get('example') or row.get('例句') or '').strip()
+                note_val = (row.get('note') or row.get('备注') or '无').strip()
+                counter_val = (row.get('counter') or row.get('查询次数') or '1').strip()
+
+                item = {
+                    'word': word_val,
+                    'meaning': meaning_val if meaning_val else [],
+                    'phrases': phrases_val if phrases_val else [],
+                    'example': example_val if example_val else {},
+                    'note': note_val if note_val else '无',
+                    'counter': int(counter_val) if counter_val.isdigit() else 1
+                }
+                words.append(item)
+        else:
+            # JSON
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError as e:
+                return jsonify({'error': f'JSON 解析失败: {str(e)}'}), 400
+
+            if isinstance(data, list):
+                words = data
+            elif isinstance(data, dict):
+                if 'words' in data:
+                    words = data['words']
+                else:
+                    return jsonify({'error': 'JSON 格式不正确，需要包含 "words" 数组或为纯数组'}), 400
+            else:
+                return jsonify({'error': 'JSON 格式不正确'}), 400
+
+        if not words:
+            return jsonify({'error': '未找到有效单词'}), 400
+
+        if len(words) > 200:
+            return jsonify({'error': '单次最多导入200个单词'}), 400
+
+        user_id = session['user_id']
+        results = {'success': [], 'updated': [], 'failed': []}
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            for item in words:
+                try:
+                    result = _import_word_item(item, user_id, cursor)
+                    if result is None:
+                        continue
+                    status, info = result
+                    if status == 'success':
+                        results['success'].append(info)
+                    elif status == 'updated':
+                        results['updated'].append(info)
+                except Exception as e:
+                    w = item.get('word', '?') if isinstance(item, dict) else '?'
+                    results['failed'].append({'word': str(w), 'error': str(e)})
+            conn.commit()
+
+        return jsonify({
+            'message': f'导入完成：新增 {len(results["success"])} 个，更新 {len(results["updated"])} 个，失败 {len(results["failed"])} 个',
+            'results': results
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': f'服务器错误: {str(e)}'}), 500
+
+
 @app.route('/api/words', methods=['POST'])
 @login_required
 @rate_limit(max_requests=20, window_seconds=60)
@@ -865,9 +1211,6 @@ def admin_change_user_password(user_id):
 
         new_password = data.get('new_password', '')
 
-        if new_password and len(new_password) < 4:
-            return jsonify({'error': '新密码至少需要4个字符'}), 400
-
         with get_db() as conn:
             cursor = conn.cursor()
 
@@ -937,6 +1280,11 @@ def health_check():
         'database': os.path.exists(DATABASE),
         'longcat_api_key': bool(LONGCAT_API_KEY)
     }), 200
+
+@app.route('/offline')
+def offline_page():
+    """离线单词浏览页面（无需登录）"""
+    return render_template('offline.html')
 
 @app.route('/ai-chat')
 @login_required
