@@ -8,9 +8,10 @@ from contextlib import contextmanager
 from datetime import datetime
 from dotenv import load_dotenv
 import requests
-from flask import Flask, request, jsonify, render_template, session
+from flask import Flask, request, jsonify, render_template, session, redirect, url_for
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps
 
 # 加载环境变量
 load_dotenv()
@@ -63,6 +64,37 @@ def rate_limit(max_requests=30, window_seconds=60):
         return wrapper
     return decorator
 
+def login_required(f):
+    """登录验证装饰器"""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if 'user_id' not in session:
+            return jsonify({'error': '请先登录'}), 401
+        return f(*args, **kwargs)
+    return wrapper
+
+def admin_required(f):
+    """管理员权限验证装饰器（API 路由版，返回 JSON 错误）"""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if 'user_id' not in session:
+            return jsonify({'error': '请先登录'}), 401
+        if session.get('username') != 'admin':
+            return jsonify({'error': '需要管理员权限'}), 403
+        return f(*args, **kwargs)
+    return wrapper
+
+def admin_required_redirect(f):
+    """管理员权限验证装饰器（页面路由版，未登录/无权限时重定向到首页）"""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('index'))
+        if session.get('username') != 'admin':
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return wrapper
+
 def init_db():
     """初始化数据库，创建 users 和 words 表"""
     os.makedirs(os.path.dirname(DATABASE), exist_ok=True)
@@ -87,6 +119,7 @@ def init_db():
             user_id INTEGER,
             counter INTEGER DEFAULT 1,
             meaning TEXT,
+            note TEXT DEFAULT '无',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users (id),
@@ -94,10 +127,30 @@ def init_db():
         )
     ''')
 
+    # 添加 note 列（兼容旧数据库）
+    try:
+        cursor.execute("ALTER TABLE words ADD COLUMN note TEXT DEFAULT '无'")
+    except sqlite3.OperationalError:
+        pass  # 列已存在
+
     # 创建索引以优化查询性能
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_words_user_id ON words(user_id)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_words_counter ON words(counter DESC)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_words_user_word ON words(user_id, word)')
+
+    # 创建聊天记录表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+    ''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_chat_messages_user_id ON chat_messages(user_id)')
 
     conn.commit()
     conn.close()
@@ -135,7 +188,8 @@ def fetch_word_info_from_longcat(word):
 {{
   "meaning": [{{"pos": "词性简写", "translation": "中文释义"}}, {{"pos": "词性简写2", "translation": "中文释义2"}}],
   "phrases": [{{"phrase": "词组1", "meaning": "中文含义1"}}, {{"phrase": "词组2", "meaning": "中文含义2"}}],
-  "example": {{"en": "英文例句", "zh": "中文翻译"}}
+  "example": {{"en": "英文例句", "zh": "中文翻译"}},
+  "note": "如果该单词是原型（如动词原形、名词单数等），则为"无"；如果是变形形式，则标注其原型和变形类型，例如："apple的复数形式"、"go的过去式形式"、"good的比较级形式"、"write的过去分词形式"等"
 }}
 
 词性简写可以是任意标准格式，如：c., uc., adj., adv., prep., conj., pron., int., art., num., vt., vi., pl., sing. 等注意标记名词是否可数（c. uc.）以及动词是否及物（vi. vt.）。确保返回的JSON格式严格正确，不要包含任何其他文字。
@@ -193,6 +247,7 @@ def index():
     return render_template('index.html')
 
 @app.route('/api/words', methods=['POST'])
+@login_required
 @rate_limit(max_requests=20, window_seconds=60)
 def add_or_update_word():
     """
@@ -209,17 +264,14 @@ def add_or_update_word():
         if not word:
             return jsonify({'error': '单词不能为空'}), 400
 
-        # 获取用户ID（如果未登录，使用 None）
-        user_id = session.get('user_id')
+        # 获取用户ID
+        user_id = session['user_id']
 
         with get_db() as conn:
             cursor = conn.cursor()
 
-            # 检查该用户的单词是否已存在（如果 user_id 为 None，则查询所有未登录用户的单词）
-            if user_id:
-                cursor.execute("SELECT * FROM words WHERE word = ? AND user_id = ?", (word, user_id))
-            else:
-                cursor.execute("SELECT * FROM words WHERE word = ? AND user_id IS NULL", (word,))
+            # 检查该用户的单词是否已存在
+            cursor.execute("SELECT * FROM words WHERE word = ? AND user_id = ?", (word, user_id))
             existing_word = cursor.fetchone()
 
             if existing_word:
@@ -252,11 +304,12 @@ def add_or_update_word():
                 try:
                     word_info = fetch_word_info_from_longcat(word)
                     meaning_json = json.dumps(word_info, ensure_ascii=False)
+                    note = word_info.get('note', '无')
 
-                    # 插入新单词（如果未登录，user_id 为 None）
+                    # 插入新单词
                     cursor.execute(
-                        "INSERT INTO words (word, user_id, meaning) VALUES (?, ?, ?)",
-                        (word, user_id, meaning_json)
+                        "INSERT INTO words (word, user_id, meaning, note) VALUES (?, ?, ?, ?)",
+                        (word, user_id, meaning_json, note)
                     )
                     conn.commit()
 
@@ -270,6 +323,7 @@ def add_or_update_word():
                         'word': new_word['word'],
                         'counter': new_word['counter'],
                         'meaning': word_info,
+                        'note': new_word['note'],
                         'created_at': new_word['created_at'],
                         'updated_at': new_word['updated_at']
                     }
@@ -286,31 +340,22 @@ def add_or_update_word():
         return jsonify({'error': f'服务器错误: {str(e)}'}), 500
 
 @app.route('/api/words', methods=['GET'])
+@login_required
 def get_all_words():
     """获取单词列表，按 counter 降序排序"""
     try:
-        # 获取用户ID（如果未登录，使用 None）
-        user_id = session.get('user_id')
+        # 获取用户ID
+        user_id = session['user_id']
 
         with get_db() as conn:
             cursor = conn.cursor()
 
-            if user_id:
-                # 已登录用户，只获取该用户的单词
-                cursor.execute("""
-                    SELECT id, word, counter, meaning
-                    FROM words
-                    WHERE user_id = ?
-                    ORDER BY counter DESC, word ASC
-                """, (user_id,))
-            else:
-                # 未登录用户，获取所有未登录用户的单词
-                cursor.execute("""
-                    SELECT id, word, counter, meaning
-                    FROM words
-                    WHERE user_id IS NULL
-                    ORDER BY counter DESC, word ASC
-                """)
+            cursor.execute("""
+                SELECT id, word, counter, meaning, note
+                FROM words
+                WHERE user_id = ?
+                ORDER BY counter DESC, word ASC
+            """, (user_id,))
 
             words = []
             for row in cursor.fetchall():
@@ -318,7 +363,8 @@ def get_all_words():
                     'id': row['id'],
                     'word': row['word'],
                     'counter': row['counter'],
-                    'meaning': json.loads(row['meaning']) if row['meaning'] else None
+                    'meaning': json.loads(row['meaning']) if row['meaning'] else None,
+                    'note': row['note']
                 })
 
             return jsonify(words), 200
@@ -327,20 +373,17 @@ def get_all_words():
         return jsonify({'error': f'服务器错误: {str(e)}'}), 500
 
 @app.route('/api/words/<word>', methods=['GET'])
+@login_required
 def get_word_detail(word):
     """获取单词详细信息"""
     try:
         word = word.lower()
-        # 获取用户ID（如果未登录，使用 None）
-        user_id = session.get('user_id')
+        user_id = session['user_id']
 
         with get_db() as conn:
             cursor = conn.cursor()
 
-            if user_id:
-                cursor.execute("SELECT * FROM words WHERE word = ? AND user_id = ?", (word, user_id))
-            else:
-                cursor.execute("SELECT * FROM words WHERE word = ? AND user_id IS NULL", (word,))
+            cursor.execute("SELECT * FROM words WHERE word = ? AND user_id = ?", (word, user_id))
             word_data = cursor.fetchone()
 
             if not word_data:
@@ -351,6 +394,7 @@ def get_word_detail(word):
                 'word': word_data['word'],
                 'counter': word_data['counter'],
                 'meaning': json.loads(word_data['meaning']) if word_data['meaning'] else None,
+                'note': word_data['note'],
                 'created_at': word_data['created_at'],
                 'updated_at': word_data['updated_at']
             }
@@ -361,21 +405,17 @@ def get_word_detail(word):
         return jsonify({'error': f'服务器错误: {str(e)}'}), 500
 
 @app.route('/api/words/<word>', methods=['DELETE'])
+@login_required
 def delete_word(word):
     """删除单词"""
     try:
         word = word.lower()
-        # 获取用户ID（如果未登录，使用 None）
-        user_id = session.get('user_id')
+        user_id = session['user_id']
 
         with get_db() as conn:
             cursor = conn.cursor()
 
-            # 检查单词是否存在且属于当前用户
-            if user_id:
-                cursor.execute("SELECT * FROM words WHERE word = ? AND user_id = ?", (word, user_id))
-            else:
-                cursor.execute("SELECT * FROM words WHERE word = ? AND user_id IS NULL", (word,))
+            cursor.execute("SELECT * FROM words WHERE word = ? AND user_id = ?", (word, user_id))
             word_data = cursor.fetchone()
 
             if not word_data:
@@ -391,14 +431,12 @@ def delete_word(word):
         return jsonify({'error': f'服务器错误: {str(e)}'}), 500
 
 @app.route('/api/words/<word>', methods=['PUT'])
+@login_required
 def update_word(word):
     """更新当前用户的单词信息"""
     try:
         word = word.lower()
-        # 检查是否已登录
-        user_id = session.get('user_id')
-        if not user_id:
-            return jsonify({'error': '请先登录才能更新单词'}), 401
+        user_id = session['user_id']
 
         data = request.get_json()
         if not data:
@@ -447,6 +485,11 @@ def update_word(word):
                     updates.append("meaning = ?")
                     params.append(meaning_json)
 
+                # 更新备注
+                if 'note' in data:
+                    updates.append("note = ?")
+                    params.append(data['note'])
+
                 # 如果有更新字段
                 if updates:
                     updates.append("updated_at = CURRENT_TIMESTAMP")
@@ -464,6 +507,7 @@ def update_word(word):
                     'word': updated_word['word'],
                     'counter': updated_word['counter'],
                     'meaning': json.loads(updated_word['meaning']) if updated_word['meaning'] else None,
+                    'note': updated_word['note'],
                     'created_at': updated_word['created_at'],
                     'updated_at': updated_word['updated_at']
                 }
@@ -599,6 +643,7 @@ def get_current_user():
         return jsonify({'user': None}), 200
 
 @app.route('/api/chat', methods=['POST'])
+@login_required
 @rate_limit(max_requests=20, window_seconds=60)
 def chat_with_ai():
     """与 LongCat AI 对话接口"""
@@ -656,6 +701,233 @@ def chat_with_ai():
     except Exception as e:
         return jsonify({'error': f'聊天功能暂时不可用: {str(e)}'}), 500
 
+@app.route('/api/chat/history', methods=['GET'])
+@login_required
+def get_chat_history():
+    """获取当前用户的聊天记录"""
+    try:
+        user_id = session['user_id']
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, role, content, timestamp FROM chat_messages WHERE user_id = ? ORDER BY id ASC",
+                (user_id,)
+            )
+            messages = []
+            for row in cursor.fetchall():
+                messages.append({
+                    'id': row['id'],
+                    'role': row['role'],
+                    'content': row['content'],
+                    'timestamp': row['timestamp']
+                })
+            return jsonify(messages), 200
+    except Exception as e:
+        return jsonify({'error': f'服务器错误: {str(e)}'}), 500
+
+@app.route('/api/chat/history', methods=['POST'])
+@login_required
+def save_chat_message():
+    """保存一条聊天记录"""
+    try:
+        user_id = session['user_id']
+
+        data = request.get_json()
+        if not data or 'role' not in data or 'content' not in data or 'timestamp' not in data:
+            return jsonify({'error': '缺少必要参数'}), 400
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO chat_messages (user_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
+                (user_id, data['role'], data['content'], data['timestamp'])
+            )
+            conn.commit()
+            return jsonify({'id': cursor.lastrowid, 'message': '保存成功'}), 201
+    except Exception as e:
+        return jsonify({'error': f'服务器错误: {str(e)}'}), 500
+
+@app.route('/api/chat/history/<int:message_id>', methods=['DELETE'])
+@login_required
+def delete_chat_message(message_id):
+    """删除一条聊天记录"""
+    try:
+        user_id = session['user_id']
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM chat_messages WHERE id = ? AND user_id = ?",
+                (message_id, user_id)
+            )
+            conn.commit()
+            return jsonify({'message': '删除成功'}), 200
+    except Exception as e:
+        return jsonify({'error': f'服务器错误: {str(e)}'}), 500
+
+@app.route('/api/chat/history', methods=['DELETE'])
+@login_required
+def clear_chat_history():
+    """清空当前用户的聊天记录"""
+    try:
+        user_id = session['user_id']
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM chat_messages WHERE user_id = ?",
+                (user_id,)
+            )
+            conn.commit()
+            return jsonify({'message': '聊天记录已清空'}), 200
+    except Exception as e:
+        return jsonify({'error': f'服务器错误: {str(e)}'}), 500
+
+@app.route('/api/change_password', methods=['POST'])
+@login_required
+def change_password():
+    """修改当前用户密码"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': '缺少请求数据'}), 400
+
+        old_password = data.get('old_password', '')
+        new_password = data.get('new_password', '')
+        confirm_password = data.get('confirm_password', '')
+
+        # 验证新密码
+        if not new_password:
+            return jsonify({'error': '新密码不能为空'}), 400
+
+        if new_password != confirm_password:
+            return jsonify({'error': '两次输入的新密码不一致'}), 400
+
+        if len(new_password) < 4:
+            return jsonify({'error': '新密码至少需要4个字符'}), 400
+
+        user_id = session['user_id']
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+            user = cursor.fetchone()
+
+            if not user:
+                return jsonify({'error': '用户不存在'}), 404
+
+            # 如果用户已设置密码，需要验证原密码
+            if user['password_hash']:
+                if not old_password:
+                    return jsonify({'error': '请输入原密码'}), 400
+                if not check_password_hash(user['password_hash'], old_password):
+                    return jsonify({'error': '原密码错误'}), 401
+
+            # 更新密码
+            new_hash = generate_password_hash(new_password)
+            cursor.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, user_id))
+            conn.commit()
+
+            return jsonify({'message': '密码修改成功'}), 200
+
+    except Exception as e:
+        return jsonify({'error': f'服务器错误: {str(e)}'}), 500
+
+@app.route('/api/admin/users', methods=['GET'])
+@admin_required
+def admin_get_users():
+    """管理员获取所有用户列表"""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, username, password_hash, created_at FROM users ORDER BY id ASC")
+            users = []
+            for row in cursor.fetchall():
+                users.append({
+                    'id': row['id'],
+                    'username': row['username'],
+                    'has_password': bool(row['password_hash']),
+                    'created_at': row['created_at']
+                })
+            return jsonify(users), 200
+    except Exception as e:
+        return jsonify({'error': f'服务器错误: {str(e)}'}), 500
+
+@app.route('/api/admin/users/<int:user_id>/password', methods=['PUT'])
+@admin_required
+def admin_change_user_password(user_id):
+    """管理员修改任意用户密码"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': '缺少请求数据'}), 400
+
+        new_password = data.get('new_password', '')
+
+        if new_password and len(new_password) < 4:
+            return jsonify({'error': '新密码至少需要4个字符'}), 400
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            # 检查目标用户是否存在
+            cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+            target_user = cursor.fetchone()
+            if not target_user:
+                return jsonify({'error': '用户不存在'}), 404
+
+            # 更新密码（空密码设为 NULL，表示未设置密码）
+            if new_password:
+                new_hash = generate_password_hash(new_password)
+                cursor.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, user_id))
+                msg = f'用户 {target_user["username"]} 的密码已修改'
+            else:
+                cursor.execute("UPDATE users SET password_hash = NULL WHERE id = ?", (user_id,))
+                msg = f'用户 {target_user["username"]} 的密码已清除'
+            conn.commit()
+
+            return jsonify({'message': msg}), 200
+
+    except Exception as e:
+        return jsonify({'error': f'服务器错误: {str(e)}'}), 500
+
+@app.route('/api/admin/users/<int:user_id>', methods=['DELETE'])
+@admin_required
+def admin_delete_user(user_id):
+    """管理员删除用户"""
+    try:
+        # 不能删除自己
+        if user_id == session.get('user_id'):
+            return jsonify({'error': '不能删除自己的账户'}), 400
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+            target_user = cursor.fetchone()
+            if not target_user:
+                return jsonify({'error': '用户不存在'}), 404
+
+            # 删除用户的单词
+            cursor.execute("DELETE FROM words WHERE user_id = ?", (user_id,))
+            # 删除用户的聊天记录
+            cursor.execute("DELETE FROM chat_messages WHERE user_id = ?", (user_id,))
+            # 删除用户
+            cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            conn.commit()
+
+            return jsonify({'message': f'用户 {target_user["username"]} 已删除'}), 200
+
+    except Exception as e:
+        return jsonify({'error': f'服务器错误: {str(e)}'}), 500
+
+@app.route('/setting')
+@admin_required_redirect
+def setting_page():
+    """管理员设置页面"""
+    return render_template('setting.html')
+
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """健康检查接口"""
@@ -667,6 +939,7 @@ def health_check():
     }), 200
 
 @app.route('/ai-chat')
+@login_required
 def ai_chat_page():
     """渲染AI聊天页面"""
     return render_template('ai_chat.html')

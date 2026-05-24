@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理员设置</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script>document.documentElement.setAttribute('data-theme', 'dark');</script>
+    <style>
+        .setting-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .setting-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid var(--border-color);
+        }
+        .setting-header h1 {
+            color: var(--primary-color);
+            font-size: 1.8em;
+        }
+        .back-btn {
+            padding: 8px 16px;
+            background-color: var(--text-light);
+            color: var(--on-text-light);
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            text-decoration: none;
+            transition: background-color 0.3s;
+        }
+        .back-btn:hover {
+            background-color: var(--neutral-hover);
+        }
+        .user-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--card-background);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: var(--shadow);
+        }
+        .user-table th,
+        .user-table td {
+            padding: 14px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .user-table th {
+            background: var(--background-color);
+            color: var(--text-color);
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .user-table td {
+            color: var(--text-color);
+            font-size: 14px;
+        }
+        .user-table tr:hover {
+            background: var(--background-color);
+        }
+        .user-table tr:last-child td {
+            border-bottom: none;
+        }
+        .password-status {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .password-set {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        .password-unset {
+            background: #fff3e0;
+            color: #e65100;
+        }
+        [data-theme="dark"] .password-set {
+            background: #1b3a1b;
+            color: #81c784;
+        }
+        [data-theme="dark"] .password-unset {
+            background: #3a2a1b;
+            color: #ffb74d;
+        }
+        .action-btns {
+            display: flex;
+            gap: 6px;
+        }
+        .action-btn {
+            padding: 5px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background-color 0.3s;
+        }
+        .pwd-btn {
+            background-color: var(--primary-color);
+            color: var(--on-primary);
+        }
+        .pwd-btn:hover {
+            background-color: var(--primary-hover);
+        }
+        .del-btn {
+            background-color: var(--danger-color);
+            color: var(--on-danger);
+        }
+        .del-btn:hover {
+            background-color: var(--danger-hover);
+        }
+        /* 修改密码弹窗 */
+        .change-pwd-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--modal-overlay);
+            z-index: 2000;
+            display: none;
+            justify-content: center;
+            align-items: center;
+        }
+        .change-pwd-modal.show {
+            display: flex;
+        }
+        .change-pwd-content {
+            background: var(--card-background);
+            padding: 30px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: var(--shadow-hover);
+            animation: modalFadeIn 0.3s;
+        }
+        .change-pwd-content h3 {
+            color: var(--primary-color);
+            margin-bottom: 20px;
+            font-size: 1.3em;
+        }
+        .change-pwd-content .form-group {
+            margin-bottom: 15px;
+        }
+        .change-pwd-content .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--text-color);
+        }
+        .change-pwd-content .form-input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 14px;
+            background-color: var(--input-bg);
+            color: var(--text-color);
+            transition: border-color 0.3s;
+        }
+        .change-pwd-content .form-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+        .change-pwd-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+        .admin-badge {
+            display: inline-block;
+            background: var(--primary-color);
+            color: var(--on-primary);
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            margin-left: 6px;
+        }
+        .empty-users {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-light);
+        }
+    </style>
+</head>
+<body>
+    <div class="setting-container">
+        <div class="setting-header">
+            <h1>⚙️ 管理员设置</h1>
+            <a href="/" class="back-btn">← 返回单词本</a>
+        </div>
+
+        <table class="user-table" id="userTable">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>用户名</th>
+                    <th>密码状态</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="userTableBody">
+                <tr>
+                    <td colspan="5" class="empty-users">加载中...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 修改密码弹窗 -->
+    <div id="changePwdModal" class="change-pwd-modal">
+        <div class="change-pwd-content">
+            <h3 id="changePwdTitle">修改密码</h3>
+            <div class="form-group">
+                <label>新密码：</label>
+                <input type="password" id="newPassword" class="form-input" placeholder="输入新密码（留空则清除密码）">
+            </div>
+            <div class="form-group">
+                <label>确认新密码：</label>
+                <input type="password" id="confirmNewPassword" class="form-input" placeholder="再次输入新密码">
+            </div>
+            <div class="change-pwd-actions">
+                <button class="action-btn pwd-btn" onclick="submitChangePassword()">确认修改</button>
+                <button class="action-btn" style="background: var(--text-light); color: var(--on-text-light);" onclick="closeChangePwdModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+        let users = [];
+        let selectedUserId = null;
+
+        // 加载用户列表
+        async function loadUsers() {
+            console.log('loadUsers called, API_BASE =', API_BASE);
+            try {
+                const resp = await fetch(`${API_BASE}/admin/users`);
+                console.log('response status:', resp.status);
+                if (resp.status === 401 || resp.status === 403) {
+                    alert('需要管理员权限');
+                    window.location.href = '/';
+                    return;
+                }
+                if (!resp.ok) {
+                    throw new Error('加载失败');
+                }
+                users = await resp.json();
+                renderUsers();
+            } catch (e) {
+                document.getElementById('userTableBody').innerHTML =
+                    `<tr><td colspan="5" class="empty-users">加载失败: ${e.message}</td></tr>`;
+            }
+        }
+
+        function renderUsers() {
+            const tbody = document.getElementById('userTableBody');
+            if (users.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-users">暂无用户</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = users.map(user => {
+                const safeName = escapeJs(user.username);
+                const delBtn = user.username !== 'admin'
+                    ? `<button class="action-btn del-btn" onclick="deleteUser(${user.id}, '${safeName}')">删除</button>`
+                    : '';
+                return `<tr>
+                    <td>${user.id}</td>
+                    <td>${escapeHtml(user.username)}${user.username === 'admin' ? '<span class="admin-badge">管理员</span>' : ''}</td>
+                    <td><span class="password-status ${user.has_password ? 'password-set' : 'password-unset'}">${user.has_password ? '已设置' : '未设置'}</span></td>
+                    <td>${formatDate(user.created_at)}</td>
+                    <td>
+                        <div class="action-btns">
+                            <button class="action-btn pwd-btn" onclick="openChangePwdModal(${user.id}, '${safeName}')">修改密码</button>
+                            ${delBtn}
+                        </div>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        function openChangePwdModal(userId, username) {
+            selectedUserId = userId;
+            document.getElementById('changePwdTitle').textContent = `修改 "${username}" 的密码`;
+            document.getElementById('newPassword').value = '';
+            document.getElementById('confirmNewPassword').value = '';
+            document.getElementById('changePwdModal').classList.add('show');
+        }
+
+        function closeChangePwdModal() {
+            document.getElementById('changePwdModal').classList.remove('show');
+            selectedUserId = null;
+        }
+
+        async function submitChangePassword() {
+            const newPwd = document.getElementById('newPassword').value;
+            const confirmPwd = document.getElementById('confirmNewPassword').value;
+
+            if (newPwd !== confirmPwd) {
+                alert('两次输入的密码不一致');
+                return;
+            }
+            if (newPwd && newPwd.length < 4) {
+                alert('新密码至少需要4个字符');
+                return;
+            }
+
+            try {
+                const resp = await fetch(`${API_BASE}/admin/users/${selectedUserId}/password`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ new_password: newPwd })
+                });
+
+                const data = await resp.json();
+
+                if (resp.ok) {
+                    alert(data.message);
+                    closeChangePwdModal();
+                    loadUsers();
+                } else {
+                    alert(data.error || '修改失败');
+                }
+            } catch (e) {
+                alert('网络错误');
+            }
+        }
+
+        async function deleteUser(userId, username) {
+            if (!confirm(`确定要删除用户 "${username}" 吗？\n此操作将同时删除该用户的所有单词和聊天记录，不可恢复。`)) {
+                return;
+            }
+
+            try {
+                const resp = await fetch(`${API_BASE}/admin/users/${userId}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await resp.json();
+
+                if (resp.ok) {
+                    alert(data.message);
+                    loadUsers();
+                } else {
+                    alert(data.error || '删除失败');
+                }
+            } catch (e) {
+                alert('网络错误');
+            }
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function escapeJs(str) {
+            return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '未知';
+            const d = new Date(dateStr);
+            return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        }
+
+        // 初始化
+        loadUsers();
+        document.getElementById('changePwdModal').addEventListener('click', function(e) {
+            if (e.target === this) closeChangePwdModal();
+        });
+    </script>
+</body>
+</html>

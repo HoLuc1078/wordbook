@@ -552,6 +552,15 @@ header p {
     color: var(--text-light);
 }
 
+.note-box {
+    background: var(--background-color);
+    padding: 12px;
+    border-radius: 6px;
+    border-left: 4px solid var(--secondary-color);
+    color: var(--text-color);
+    font-size: 0.95em;
+}
+
 /* 编辑表单样式 */
 .word-edit-form h3 {
     font-size: 1.8em;
@@ -744,6 +753,21 @@ textarea.form-input {
 
 .logout-btn:hover {
     background-color: var(--neutral-hover);
+}
+
+.account-btn {
+    padding: 6px 12px;
+    background-color: var(--secondary-color);
+    color: var(--on-secondary);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.3s;
+}
+
+.account-btn:hover {
+    background-color: var(--secondary-hover);
 }
 
 /* 认证弹窗样式 */

@@ -114,7 +114,7 @@ const loginBtn = document.getElementById('loginBtn');
 const userInfo = document.getElementById('userInfo');
 const aiChatBtn = document.getElementById('aiChatBtn');
 const aiChatModal = document.getElementById('aiChatModal');
-let chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]'); // 聊天历史
+let chatHistory = []; // 聊天历史（从云端加载）
 const chatMessages = document.getElementById('chatMessages');
 const chatInput = document.getElementById('chatInput');
 
@@ -206,29 +206,44 @@ async function checkLoginStatus() {
         if (response.ok) {
             currentUser = data.user;
             updateUI();
-            await loadWordsList(); // 总是加载单词列表
+            await loadWordsList();
         }
     } catch (error) {
         console.error('Error checking login status:', error);
     }
 }
 
+// 全局处理 401 响应
+async function apiFetch(url, options = {}) {
+    const response = await fetch(url, options);
+    if (response.status === 401) {
+        currentUser = null;
+        updateUI();
+        loginModal.style.display = 'flex';
+        throw new Error('请先登录');
+    }
+    return response;
+}
+
 /**
  * 更新UI根据登录状态
  */
 function updateUI() {
+    const accountBtn = document.getElementById('accountBtn');
     if (currentUser) {
         userInfo.textContent = `欢迎，${currentUser.username}`;
         loginBtn.textContent = '退出';
         loginBtn.className = 'logout-btn';
         loginBtn.onclick = logout;
+        if (accountBtn) accountBtn.style.display = 'inline-block';
     } else {
-        userInfo.textContent = '未登录（本地模式）';
+        userInfo.textContent = '未登录';
         loginBtn.textContent = '登录';
         loginBtn.className = 'login-btn';
         loginBtn.onclick = function() {
             loginModal.style.display = 'flex';
         };
+        if (accountBtn) accountBtn.style.display = 'none';
     }
     queryBtn.disabled = false;
     loadWordsList();
@@ -368,12 +383,6 @@ async function handleQueryWord() {
     const word = wordInput.value.trim();
     if (!word) {
         showError('请输入英语单词');
-        return;
-    }
-
-    // 检查是否已登录
-    if (!currentUser) {
-        showError('请先登录才能添加单词');
         return;
     }
 
@@ -648,6 +657,11 @@ function renderWordDetail(wordData) {
                 </div>
             </div>
 
+            <div class="detail-section">
+                <h4>🏷️ 备注</h4>
+                <div class="note-box">${wordData.note || '无'}</div>
+            </div>
+
             <div class="word-stats">
                 <div class="stat-item">
                     <span class="stat-label">查询次数：</span>
@@ -885,6 +899,11 @@ function editWord(word) {
                 <input type="number" id="editCounterInput" value="${wordData.counter}" min="1" class="form-input">
             </div>
 
+            <div class="form-group">
+                <label>备注：</label>
+                <input type="text" id="editNoteInput" value="${wordData.note || '无'}" placeholder="如：apple的复数形式、go的过去式形式等" class="form-input">
+            </div>
+
             <div class="form-actions">
                 <button class="save-btn" data-original-word="${word}">💾 保存</button>
                 <button class="cancel-btn">❌ 取消</button>
@@ -997,10 +1016,14 @@ async function saveWord(originalWord) {
             }
         });
 
+        // 获取备注
+        const note = document.getElementById('editNoteInput')?.value.trim() || '无';
+
         // 构建更新数据
         const updateData = {
             word: newWord,
             counter: counter,
+            note: note,
             meaning: {
                 meaning: meanings, // 使用数组格式
                 phrases: phrases,
@@ -1100,6 +1123,74 @@ async function deleteWord(word) {
     }
 }
 
+
+/**
+ * 打开账户管理弹窗
+ */
+function openAccountModal() {
+    document.getElementById('oldPassword').value = '';
+    document.getElementById('newPassword').value = '';
+    document.getElementById('confirmPassword').value = '';
+    document.getElementById('accountModal').style.display = 'flex';
+}
+
+/**
+ * 关闭账户管理弹窗
+ */
+function closeAccountModal() {
+    document.getElementById('accountModal').style.display = 'none';
+}
+
+/**
+ * 处理修改密码
+ */
+async function handleChangePassword() {
+    const oldPassword = document.getElementById('oldPassword').value;
+    const newPassword = document.getElementById('newPassword').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+
+    if (!newPassword) {
+        showError('新密码不能为空');
+        return;
+    }
+
+    if (newPassword.length < 4) {
+        showError('新密码至少需要4个字符');
+        return;
+    }
+
+    if (newPassword !== confirmPassword) {
+        showError('两次输入的新密码不一致');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/change_password`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                old_password: oldPassword,
+                new_password: newPassword,
+                confirm_password: confirmPassword
+            })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            closeAccountModal();
+            showSuccess('密码修改成功');
+        } else {
+            showError(data.error || '修改失败');
+        }
+    } catch (error) {
+        showError('网络错误，请检查网络连接');
+        console.error('Error:', error);
+    }
+}
+
 /**
  * 切换到AI聊天页面
  */
@@ -1110,28 +1201,48 @@ function toggleAIChat() {
 // ==================== AI 聊天功能（弹窗模式） ====================
 
 // 仅在AI聊天模态框存在时加载聊天历史
-function loadChatHistoryIfNeeded() {
+async function loadChatHistoryIfNeeded() {
     if (aiChatModal) {
-        loadChatHistory();
+        await loadChatHistory();
     }
 }
 
 /**
  * 加载聊天历史
  */
-function loadChatHistory() {
-    const savedHistory = localStorage.getItem('chatHistory');
-    if (savedHistory) {
-        chatHistory = JSON.parse(savedHistory);
-        renderChatMessages();
+async function loadChatHistory() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/chat/history`);
+        if (response.ok) {
+            chatHistory = await response.json();
+            renderChatMessages();
+        } else if (response.status === 401) {
+            chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]');
+            renderChatMessages();
+        }
+    } catch (error) {
+        console.error('加载聊天记录失败:', error);
     }
 }
 
-/**
- * 保存聊天历史
- */
+async function saveChatMessageToCloud(msg) {
+    try {
+        await fetch(`${API_BASE_URL}/chat/history`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                role: msg.role,
+                content: msg.content,
+                timestamp: msg.timestamp
+            })
+        });
+    } catch (error) {
+        console.error('保存消息失败:', error);
+    }
+}
+
 function saveChatHistory() {
-    localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+    // 云端存储，无需本地保存
 }
 
 /**
@@ -1207,29 +1318,42 @@ function changeAIModel() {
 /**
  * 删除单条聊天记录
  */
-function deleteChatMessage(messageId) {
+async function deleteChatMessage(messageId) {
     if (!messageId) return;
 
     if (confirm('确定要删除这条消息吗？')) {
         // Remove from chat history
         chatHistory = chatHistory.filter(msg => msg.id !== messageId);
 
-        // Save to localStorage
-        saveChatHistory();
-
         // Re-render messages
         renderChatMessages();
+
+        // Delete from cloud
+        try {
+            await fetch(`${API_BASE_URL}/chat/history/${messageId}`, {
+                method: 'DELETE'
+            });
+        } catch (error) {
+            console.error('删除消息失败:', error);
+        }
     }
 }
 
 /**
  * 清空聊天记录
  */
-function clearChatHistory() {
+async function clearChatHistory() {
     if (confirm('确定要清空所有聊天记录吗？此操作不可恢复。')) {
         chatHistory = [];
-        localStorage.removeItem('chatHistory');
         renderChatMessages();
+
+        try {
+            await fetch(`${API_BASE_URL}/chat/history`, {
+                method: 'DELETE'
+            });
+        } catch (error) {
+            console.error('清空聊天记录失败:', error);
+        }
     }
 }
 
@@ -1309,7 +1433,10 @@ async function sendChatMessage() {
             };
             chatHistory.push(aiMessage);
             renderChatMessages();
-            saveChatHistory();
+
+            // Save both messages to cloud
+            saveChatMessageToCloud(userMessage);
+            saveChatMessageToCloud(aiMessage);
         } else {
             // 显示错误
             const errorDiv = document.createElement('div');

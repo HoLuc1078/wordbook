@@ -34,6 +34,7 @@
             <p>记录和复习你的英语单词</p>
             <div id="userStatus" class="user-status">
                 <span id="userInfo"></span>
+                <button id="accountBtn" class="account-btn" style="display: none;" onclick="openAccountModal()">🔒 账户管理</button>
                 <button id="loginBtn" class="login-btn">登录</button>
             </div>
         </header>
@@ -117,6 +118,32 @@
 
         <!-- AI 聊天按钮 -->
         <button id="aiChatBtn" class="ai-chat-btn" onclick="toggleAIChat()">🤖</button>
+
+        <!-- 账户管理弹窗 -->
+        <div id="accountModal" class="modal" style="display: none;">
+            <div class="modal-content" style="max-width: 420px;">
+                <span class="close-btn" onclick="closeAccountModal()">&times;</span>
+                <div class="word-edit-form">
+                    <h3>🔒 修改密码</h3>
+                    <div class="form-group">
+                        <label>原密码：</label>
+                        <input type="password" id="oldPassword" class="form-input" placeholder="如果没有设置密码，留空即可">
+                    </div>
+                    <div class="form-group">
+                        <label>新密码：</label>
+                        <input type="password" id="newPassword" class="form-input" placeholder="输入新密码（至少4个字符）">
+                    </div>
+                    <div class="form-group">
+                        <label>重复新密码：</label>
+                        <input type="password" id="confirmPassword" class="form-input" placeholder="再次输入新密码">
+                    </div>
+                    <div class="form-actions">
+                        <button class="save-btn" onclick="handleChangePassword()">确认修改</button>
+                        <button class="cancel-btn" onclick="closeAccountModal()">取消</button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- AI 聊天窗口 -->
         <div id="aiChatModal" class="modal" style="display: none;">

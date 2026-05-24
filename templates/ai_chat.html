@@ -450,6 +450,37 @@
             setupEventListeners();
         });
 
+        async function loadChatHistoryFromCloud() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/chat/history`);
+                if (response.ok) {
+                    chatHistory = await response.json();
+                    renderChatMessages();
+                } else if (response.status === 401) {
+                    chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]');
+                    renderChatMessages();
+                }
+            } catch (error) {
+                console.error('加载聊天记录失败:', error);
+            }
+        }
+
+        async function saveChatMessageToCloud(msg) {
+            try {
+                await fetch(`${API_BASE_URL}/chat/history`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        role: msg.role,
+                        content: msg.content,
+                        timestamp: msg.timestamp
+                    })
+                });
+            } catch (error) {
+                console.error('保存消息失败:', error);
+            }
+        }
+
         function setupEventListeners() {
             // Handle Enter key for sending messages
             chatInput.addEventListener('keydown', function(e) {
@@ -467,15 +498,11 @@
         }
 
         function loadChatHistory() {
-            const savedHistory = localStorage.getItem('chatHistory');
-            if (savedHistory) {
-                chatHistory = JSON.parse(savedHistory);
-                renderChatMessages();
-            }
+            loadChatHistoryFromCloud();
         }
 
         function saveChatHistory() {
-            localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+            // 云端存储，无需本地保存
         }
 
         function generateMessageId() {
@@ -561,26 +588,35 @@
             return html;
         }
 
-        function deleteMessage(messageId) {
+        async function deleteMessage(messageId) {
             if (!confirm('确定要删除这条消息吗？')) {
                 return;
             }
 
-            // Remove from chat history
             chatHistory = chatHistory.filter(msg => msg.id !== messageId);
-
-            // Save to localStorage
-            saveChatHistory();
-
-            // Re-render messages
             renderChatMessages();
+
+            try {
+                await fetch(`${API_BASE_URL}/chat/history/${messageId}`, {
+                    method: 'DELETE'
+                });
+            } catch (error) {
+                console.error('删除消息失败:', error);
+            }
         }
 
-        function clearChatHistory() {
+        async function clearChatHistory() {
             if (confirm('确定要清空所有聊天记录吗？此操作不可恢复。')) {
                 chatHistory = [];
-                localStorage.removeItem('chatHistory');
                 renderChatMessages();
+
+                try {
+                    await fetch(`${API_BASE_URL}/chat/history`, {
+                        method: 'DELETE'
+                    });
+                } catch (error) {
+                    console.error('清空聊天记录失败:', error);
+                }
             }
         }
 
@@ -633,7 +669,7 @@
             // Add to history and render
             chatHistory.push(userMessage);
             renderChatMessages();
-            saveChatHistory();
+            saveChatMessageToCloud(userMessage);
 
             // Clear input
             chatInput.value = '';
@@ -675,7 +711,7 @@
                     // Add to history and render
                     chatHistory.push(aiMessage);
                     renderChatMessages();
-                    saveChatHistory();
+                    saveChatMessageToCloud(aiMessage);
                 } else {
                     const data = await response.json();
                     // Show error message
