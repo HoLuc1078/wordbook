@@ -25,7 +25,7 @@ CORS(app)  # 启用跨域支持
 DATABASE = os.path.join(os.path.dirname(__file__), 'database', 'words.db')
 LONGCAT_API_KEY = os.getenv('LONGCAT_API_KEY')
 LONGCAT_API_URL = "https://api.longcat.chat/openai/v1/chat/completions"
-LONGCAT_MODEL = "LongCat-Flash-Lite"
+LONGCAT_MODEL = "LongCat-2.0-Preview"
 
 # ==================== 简单的内存频率限制器 ====================
 _request_counts = {}
