@@ -1407,7 +1407,7 @@ function handleChatKeyPress(event) {
  */
 function getCurrentAIModel() {
     const modelSelect = document.getElementById('aiModelSelect');
-    return modelSelect ? modelSelect.value : 'LongCat-Flash-Lite';
+    return modelSelect ? modelSelect.value : 'LongCat-2.0-Preview';
 }
 
 /**
