@@ -1359,7 +1359,7 @@ function renderChatMessages() {
     if (chatHistory.length === 0) {
         const welcomeDiv = document.createElement('div');
         welcomeDiv.className = 'chat-welcome';
-        welcomeDiv.innerHTML = '<p>你好！我是 LongCat AI，有什么可以帮助你的吗？</p>';
+        welcomeDiv.innerHTML = '<p>你好！我是 DeepSeek AI，有什么可以帮助你的吗？</p>';
         chatMessages.appendChild(welcomeDiv);
         return;
     }
@@ -1407,7 +1407,7 @@ function handleChatKeyPress(event) {
  */
 function getCurrentAIModel() {
     const modelSelect = document.getElementById('aiModelSelect');
-    return modelSelect ? modelSelect.value : 'LongCat-2.0-Preview';
+    return modelSelect ? modelSelect.value : 'deepseek-v4-pro';
 }
 
 /**

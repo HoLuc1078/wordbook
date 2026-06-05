@@ -23,9 +23,9 @@ CORS(app)  # 启用跨域支持
 
 # 配置
 DATABASE = os.path.join(os.path.dirname(__file__), 'database', 'words.db')
-LONGCAT_API_KEY = os.getenv('LONGCAT_API_KEY')
-LONGCAT_API_URL = "https://api.longcat.chat/openai/v1/chat/completions"
-LONGCAT_MODEL = "LongCat-2.0-Preview"
+DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
+DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
+DEEPSEEK_MODEL = "deepseek-v4-pro"
 
 # ==================== 简单的内存频率限制器 ====================
 _request_counts = {}
@@ -152,6 +152,36 @@ def init_db():
     ''')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_chat_messages_user_id ON chat_messages(user_id)')
 
+    # 创建句子分析记录表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS sentences (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            original_text TEXT NOT NULL,
+            analysis_result TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+    ''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_sentences_user_id ON sentences(user_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_sentences_created ON sentences(user_id, created_at DESC)')
+
+    # 创建设置表（全局 key-value 存储，如颜色库）
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    # 初始化默认颜色库（如果不存在）
+    cursor.execute('''
+        INSERT OR IGNORE INTO settings (key, value)
+        VALUES ('color_library', ?)
+    ''', (json.dumps([
+        "#d0e6ff", "#d4f0d4", "#ffe0b2", "#f3e5f5", "#fff9c4", "#e0f7fa"
+    ]),))
+
     conn.commit()
     conn.close()
 
@@ -171,16 +201,16 @@ def get_db():
     finally:
         conn.close()
 
-def fetch_word_info_from_longcat(word):
+def fetch_word_info_from_deepseek(word):
     """
-    调用 LongCat API 获取单词信息
+    调用 DeepSeek API 获取单词信息
     返回: dict - 包含 meaning, phrases, example
     """
-    if not LONGCAT_API_KEY:
-        raise ValueError("LONGCAT_API_KEY not found in environment variables")
+    if not DEEPSEEK_API_KEY:
+        raise ValueError("DEEPSEEK_API_KEY not found in environment variables")
 
     headers = {
-        "Authorization": f"Bearer {LONGCAT_API_KEY}",
+        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
         "Content-Type": "application/json"
     }
 
@@ -196,7 +226,7 @@ def fetch_word_info_from_longcat(word):
 """
 
     payload = {
-        "model": LONGCAT_MODEL,
+        "model": DEEPSEEK_MODEL,
         "messages": [
             {"role": "system", "content": "你是一个英语词典助手，请严格按照 JSON 格式输出，不要有任何额外文字。"},
             {"role": "user", "content": prompt}
@@ -207,7 +237,7 @@ def fetch_word_info_from_longcat(word):
 
     try:
         response = requests.post(
-            LONGCAT_API_URL,
+            DEEPSEEK_API_URL,
             headers=headers,
             json=payload,
             timeout=30
@@ -299,7 +329,7 @@ def batch_add_words():
                     })
                 else:
                     try:
-                        word_info = fetch_word_info_from_longcat(word)
+                        word_info = fetch_word_info_from_deepseek(word)
                         meaning_json = json.dumps(word_info, ensure_ascii=False)
                         note = word_info.get('note', '无')
 
@@ -648,7 +678,7 @@ def add_or_update_word():
             else:
                 # 单词不存在，调用 AI API 获取信息
                 try:
-                    word_info = fetch_word_info_from_longcat(word)
+                    word_info = fetch_word_info_from_deepseek(word)
                     meaning_json = json.dumps(word_info, ensure_ascii=False)
                     note = word_info.get('note', '无')
 
@@ -992,7 +1022,7 @@ def get_current_user():
 @login_required
 @rate_limit(max_requests=20, window_seconds=60)
 def chat_with_ai():
-    """与 LongCat AI 对话接口"""
+    """与 DeepSeek AI 对话接口"""
     try:
         data = request.get_json()
         if not data or 'message' not in data:
@@ -1000,7 +1030,7 @@ def chat_with_ai():
 
         user_message = data['message']
         history = data.get('history', [])
-        model = data.get('model', LONGCAT_MODEL)  # 获取选择的模型
+        model = data.get('model', DEEPSEEK_MODEL)  # 获取选择的模型
 
         # 构建对话历史
         messages = [
@@ -1018,9 +1048,9 @@ def chat_with_ai():
         # 添加当前消息
         messages.append({"role": "user", "content": user_message})
 
-        # 调用 LongCat API
+        # 调用 DeepSeek API
         headers = {
-            "Authorization": f"Bearer {LONGCAT_API_KEY}",
+            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
             "Content-Type": "application/json"
         }
 
@@ -1032,7 +1062,7 @@ def chat_with_ai():
         }
 
         response = requests.post(
-            LONGCAT_API_URL,
+            DEEPSEEK_API_URL,
             headers=headers,
             json=payload,
             timeout=30
@@ -1278,7 +1308,7 @@ def health_check():
         'status': 'healthy',
         'timestamp': datetime.now().isoformat(),
         'database': os.path.exists(DATABASE),
-        'longcat_api_key': bool(LONGCAT_API_KEY)
+        'deepseek_api_key': bool(DEEPSEEK_API_KEY)
     }), 200
 
 @app.route('/offline')
@@ -1292,11 +1322,203 @@ def ai_chat_page():
     """渲染AI聊天页面"""
     return render_template('ai_chat.html')
 
+@app.route('/sentence')
+@login_required
+def sentence_page():
+    """渲染句子分析页面"""
+    return render_template('sentence.html')
+
+@app.route('/api/sentence/analyze', methods=['POST'])
+@login_required
+@rate_limit(max_requests=15, window_seconds=60)
+def analyze_sentence():
+    """分析句子语法成分"""
+    try:
+        data = request.get_json()
+        if not data or 'sentence' not in data:
+            return jsonify({'error': '缺少 sentence 参数'}), 400
+
+        sentence = data['sentence'].strip()
+        if not sentence:
+            return jsonify({'error': '句子不能为空'}), 400
+
+        headers = {
+            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        prompt = f"""请分析以下英语句子的语法成分，返回严格的 JSON 数组格式，每个元素包含 text（成分文本）、type（成分类型名称）和 meaning（该成分在此句中的语法含义解释）。
+
+句子的每个单词或词组都必须被包含在一个成分中，不能遗漏任何部分。
+
+成分类型 type 不要使用固定命名，而是根据句子实际情况灵活生成，例如"主语"、"谓语"、"宾语"、"定语"、"状语"、"补语"、"表语"、"同位语"、"连词"、"介词短语"、"不定式"、"分词短语"等。
+
+请分析以下句子：
+{sentence}
+
+只返回 JSON 数组，不要包含任何其他文字。"""
+
+        payload = {
+            "model": DEEPSEEK_MODEL,
+            "messages": [
+                {"role": "system", "content": "你是一个英语语法分析助手，请严格按照 JSON 数组格式输出句子成分分析结果，不要有任何额外文字。"},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.3,
+            "max_tokens": 2048
+        }
+
+        response = requests.post(
+            DEEPSEEK_API_URL,
+            headers=headers,
+            json=payload,
+            timeout=60
+        )
+        response.raise_for_status()
+
+        result = response.json()
+        content = result['choices'][0]['message']['content']
+
+        content = content.strip()
+        if content.startswith('```json'):
+            content = content[7:]
+        if content.startswith('```'):
+            content = content[3:]
+        if content.endswith('```'):
+            content = content[:-3]
+        content = content.strip()
+
+        analysis = json.loads(content)
+
+        if not isinstance(analysis, list):
+            return jsonify({'error': 'AI 返回格式不正确，应为数组'}), 500
+
+        user_id = session['user_id']
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO sentences (user_id, original_text, analysis_result) VALUES (?, ?, ?)",
+                (user_id, sentence, json.dumps(analysis, ensure_ascii=False))
+            )
+            conn.commit()
+            sentence_id = cursor.lastrowid
+
+        return jsonify({
+            'id': sentence_id,
+            'sentence': sentence,
+            'analysis': analysis
+        }), 200
+
+    except json.JSONDecodeError:
+        return jsonify({'error': 'AI 返回的 JSON 格式无效'}), 500
+    except requests.RequestException as e:
+        return jsonify({'error': f'API 请求失败: {str(e)}'}), 500
+    except Exception as e:
+        return jsonify({'error': f'分析失败: {str(e)}'}), 500
+
+@app.route('/api/sentence/history', methods=['GET'])
+@login_required
+def get_sentence_history():
+    """获取当前用户的句子分析历史"""
+    try:
+        user_id = session['user_id']
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, original_text, analysis_result, created_at FROM sentences WHERE user_id = ? ORDER BY created_at DESC LIMIT 50",
+                (user_id,)
+            )
+            sentences = []
+            for row in cursor.fetchall():
+                sentences.append({
+                    'id': row['id'],
+                    'original_text': row['original_text'],
+                    'analysis_result': json.loads(row['analysis_result']) if row['analysis_result'] else None,
+                    'created_at': row['created_at']
+                })
+            return jsonify(sentences), 200
+    except Exception as e:
+        return jsonify({'error': f'服务器错误: {str(e)}'}), 500
+
+@app.route('/api/sentence/<int:sentence_id>', methods=['DELETE'])
+@login_required
+def delete_sentence(sentence_id):
+    """删除句子分析记录"""
+    try:
+        user_id = session['user_id']
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM sentences WHERE id = ? AND user_id = ?",
+                (sentence_id, user_id)
+            )
+            conn.commit()
+            return jsonify({'message': '删除成功'}), 200
+    except Exception as e:
+        return jsonify({'error': f'服务器错误: {str(e)}'}), 500
+
+@app.route('/api/settings/colors', methods=['GET'])
+def get_color_library():
+    """获取颜色库配置"""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT value FROM settings WHERE key = 'color_library'")
+            row = cursor.fetchone()
+            if row:
+                return jsonify({'colors': json.loads(row['value'])}), 200
+            else:
+                default_colors = ["#d0e6ff", "#d4f0d4", "#ffe0b2", "#f3e5f5", "#fff9c4", "#e0f7fa"]
+                return jsonify({'colors': default_colors}), 200
+    except Exception as e:
+        return jsonify({'error': f'服务器错误: {str(e)}'}), 500
+
+@app.route('/api/settings/colors', methods=['PUT'])
+@admin_required
+def update_color_library():
+    """更新颜色库配置（管理员）"""
+    try:
+        data = request.get_json()
+        if not data or 'colors' not in data:
+            return jsonify({'error': '缺少 colors 参数'}), 400
+
+        colors = data['colors']
+        if not isinstance(colors, list) or len(colors) == 0:
+            return jsonify({'error': 'colors 必须是非空数组'}), 400
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('color_library', ?, CURRENT_TIMESTAMP)",
+                (json.dumps(colors, ensure_ascii=False),)
+            )
+            conn.commit()
+            return jsonify({'message': '颜色库已更新', 'colors': colors}), 200
+    except Exception as e:
+        return jsonify({'error': f'服务器错误: {str(e)}'}), 500
+
+@app.route('/api/settings/colors/reset', methods=['POST'])
+@admin_required
+def reset_color_library():
+    """重置颜色库为默认值（管理员）"""
+    try:
+        default_colors = ["#d0e6ff", "#d4f0d4", "#ffe0b2", "#f3e5f5", "#fff9c4", "#e0f7fa"]
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('color_library', ?, CURRENT_TIMESTAMP)",
+                (json.dumps(default_colors, ensure_ascii=False),)
+            )
+            conn.commit()
+            return jsonify({'message': '颜色库已重置为默认值', 'colors': default_colors}), 200
+    except Exception as e:
+        return jsonify({'error': f'服务器错误: {str(e)}'}), 500
+
 if __name__ == '__main__':
     # 初始化数据库
     init_db()
     print(f"数据库已初始化: {DATABASE}")
-    print(f"LongCat API Key 已配置: {bool(LONGCAT_API_KEY)}")
+    print(f"DeepSeek API Key 已配置: {bool(DEEPSEEK_API_KEY)}")
 
     # 启动 Flask 应用
     app.run(host='0.0.0.0', port=5000, debug=False)

@@ -5,7 +5,7 @@
 ## ✨ 功能特性
 
 - **单词管理**: 添加、查看、删除和追踪英语单词
-- **AI 集成**: 使用 LongCat AI API 自动获取单词详细信息
+- **AI 集成**: 使用 DeepSeek AI API 自动获取单词详细信息
 - **智能追踪**: 计数器系统记录单词查询频率
 - **响应式界面**: 现代化、适配移动端的网页界面
 - **RESTful API**: 完整的单词操作 API
@@ -16,14 +16,14 @@
 - **后端**: Flask (Python)
 - **前端**: HTML5, CSS3, JavaScript
 - **数据库**: SQLite
-- **AI API**: LongCat 聊天 API
+- **AI API**: DeepSeek 聊天 API
 - **部署**: 兼容任何 Python 托管环境
 
 ## 📋 环境要求
 
 - Python 3.7+
 - pip 包管理器
-- LongCat API 密钥
+- DeepSeek API 密钥
 
 ## 🚀 快速开始
 
@@ -41,7 +41,7 @@ pip install -r requirements.txt
 ### 3. 配置环境变量
 ```bash
 cp ex.env .env
-# 编辑 .env 文件，添加您的 LongCat API 密钥
+# 编辑 .env 文件，添加您的 DeepSeek API 密钥
 ```
 
 ### 4. 运行应用
@@ -57,7 +57,7 @@ python app.py
 编辑 `.env` 文件配置应用：
 
 ```
-LONGCAT_API_KEY=您的API密钥
+DEEPSEEK_API_KEY=您的API密钥
 ```
 
 ## 📖 API 文档
@@ -140,5 +140,5 @@ wordbook/
 
 ## 🙏 致谢
 
-- LongCat AI 提供的单词信息 API
+- DeepSeek AI 提供的单词信息 API
 - Flask 框架提供的优秀 Web 开发体验

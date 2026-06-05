@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>句子分析 - 英语单词本</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <style>
+        .sentence-container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .sentence-header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .sentence-header h1 {
+            color: var(--primary-color);
+            font-size: 2em;
+            margin-bottom: 5px;
+        }
+
+        .sentence-header p {
+            color: var(--text-light);
+        }
+
+        /* 输入卡片 */
+        .sentence-card {
+            background: var(--card-background);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow);
+        }
+
+        /* 分析按钮加载状态 */
+        .analyze-btn.loading {
+            pointer-events: none;
+            opacity: 0.7;
+        }
+
+        .analyze-btn.loading::after {
+            content: '';
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid transparent;
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .component-span {
+            color: #1a1a2e;
+        }
+
+        [data-theme="dark"] .component-span {
+            color: #1a1a2e;
+        }
+
+        /* 图例中的颜色文本适配 */
+        .legend-item {
+            color: #1a1a2e;
+        }
+
+        /* 颜色库管理样式 */
+        .color-management {
+            background: var(--card-background);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 30px;
+            box-shadow: var(--shadow);
+        }
+
+        .color-management h2 {
+            color: var(--primary-color);
+            margin-bottom: 16px;
+            font-size: 1.3em;
+        }
+
+        .color-list {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 16px 0;
+        }
+
+        .color-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            margin-bottom: 6px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background: var(--background-color);
+        }
+
+        .color-swatch {
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+
+        .color-value {
+            flex: 1;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 13px;
+            color: var(--text-color);
+        }
+
+        .color-actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        .color-btn {
+            padding: 4px 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .color-btn.edit {
+            background: var(--primary-color);
+            color: var(--on-primary);
+        }
+
+        .color-btn.edit:hover {
+            background: var(--primary-hover);
+        }
+
+        .color-btn.delete {
+            background: var(--danger-color);
+            color: var(--on-danger);
+        }
+
+        .color-btn.delete:hover {
+            background: var(--danger-hover);
+        }
+
+        .add-color-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-top: 12px;
+        }
+
+        .color-input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--input-bg);
+            color: var(--text-color);
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 14px;
+        }
+
+        .color-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .add-btn {
+            padding: 8px 16px;
+            background: var(--secondary-color);
+            color: var(--on-secondary);
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .add-btn:hover {
+            background: var(--secondary-hover);
+        }
+
+        .reset-btn {
+            padding: 8px 16px;
+            background: var(--text-light);
+            color: var(--on-text-light);
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .reset-btn:hover {
+            background: var(--neutral-hover);
+        }
+
+        .color-msg {
+            margin-top: 10px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            display: none;
+        }
+
+        .color-msg.success {
+            display: block;
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .color-msg.error {
+            display: block;
+            background: var(--error-bg);
+            color: var(--error-text);
+        }
+
+        [data-theme="dark"] .color-msg.success {
+            background: #1b3a1b;
+            color: #81c784;
+        }
+    </style>
+</head>
+<body>
+    <div class="sentence-container">
+        <!-- 顶部导航 -->
+        <div class="theme-toggle">
+            <button class="theme-btn" id="themeBtn" onclick="toggleThemeDropdown()">
+                <span class="theme-icon" id="themeIcon">🌓</span>
+                <span class="theme-label" id="themeLabel">跟随系统</span>
+            </button>
+            <div class="theme-dropdown" id="themeDropdown">
+                <button class="theme-option" data-value="light" onclick="setTheme('light')">
+                    <span class="theme-icon">☀️</span> 浅色
+                </button>
+                <button class="theme-option" data-value="dark" onclick="setTheme('dark')">
+                    <span class="theme-icon">🌙</span> 深色
+                </button>
+                <button class="theme-option active" data-value="system" onclick="setTheme('system')">
+                    <span class="theme-icon">🌓</span> 跟随系统
+                </button>
+            </div>
+        </div>
+
+        <div class="sentence-header">
+            <h1>📝 句子分析</h1>
+            <p>输入英语句子，AI 自动分析语法成分</p>
+        </div>
+
+        <div class="top-nav">
+            <a href="/" class="nav-btn">📚 单词本</a>
+            <a href="/ai-chat" class="nav-btn">🤖 AI 对话</a>
+            <a href="/sentence" class="nav-btn active">📝 句子分析</a>
+        </div>
+
+        <!-- 输入区域 -->
+        <div class="sentence-card">
+            <div class="sentence-input-section">
+                <div class="sentence-input-group">
+                    <textarea
+                        id="sentenceInput"
+                        class="sentence-textarea"
+                        placeholder="输入英语句子，例如：The quick brown fox jumps over the lazy dog."
+                        rows="3"
+                    ></textarea>
+                </div>
+                <div class="sentence-actions">
+                    <button id="analyzeBtn" class="analyze-btn" onclick="analyzeSentence()">🔍 分析句子</button>
+                    <button id="clearInputBtn" class="clear-input-btn" onclick="clearSentenceInput()">清空</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 分析结果区域 -->
+        <div id="resultSection" class="sentence-result-section" style="display: none;">
+            <h2>📋 分析结果</h2>
+            <div id="resultContent"></div>
+        </div>
+
+        <!-- 历史记录 -->
+        <div class="sentence-history-section" id="historySection">
+            <h2>📜 历史记录</h2>
+            <div id="historyList" class="history-list">
+                <p class="empty-state">暂无历史记录</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 成分详情弹窗 -->
+    <div id="componentModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeComponentModal()">&times;</span>
+            <div id="componentModalBody"></div>
+        </div>
+    </div>
+
+    <!-- 悬浮提示 -->
+    <div id="componentTooltip" class="component-tooltip" style="display: none;"></div>
+
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+    <script>
+        const API_BASE = '/api';
+        let currentAnalysis = null;
+        let currentSentence = '';
+        let typeColorMap = {};
+        let colorLibrary = [];
+        let usedColorIndex = 0;
+
+        // ============ 颜色库加载 ============
+        async function loadColorLibrary() {
+            try {
+                const resp = await fetch(`${API_BASE}/settings/colors`);
+                if (resp.ok) {
+                    const data = await resp.json();
+                    colorLibrary = data.colors || [];
+                }
+            } catch (e) {
+                colorLibrary = ["#d0e6ff", "#d4f0d4", "#ffe0b2", "#f3e5f5", "#fff9c4", "#e0f7fa"];
+            }
+        }
+
+        function getColorForType(type) {
+            if (typeColorMap[type]) return typeColorMap[type];
+            if (colorLibrary.length === 0) return '#d0e6ff';
+            const color = colorLibrary[usedColorIndex % colorLibrary.length];
+            typeColorMap[type] = color;
+            usedColorIndex++;
+            return color;
+        }
+
+        // ============ 悬浮提示 ============
+        const tooltip = document.getElementById('componentTooltip');
+        let isMobileDevice = false;
+
+        function detectMobile() {
+            return /Android|iPhone|iPad|iPod|webOS/i.test(navigator.userAgent)
+                || ('ontouchstart' in window && window.innerWidth < 768);
+        }
+
+        function showTooltip(e, meaning) {
+            if (!meaning) return;
+            tooltip.textContent = meaning;
+            tooltip.style.display = 'block';
+            positionTooltip(e);
+            if (!isMobileDevice) {
+                tooltip.style.pointerEvents = 'none';
+            }
+        }
+
+        function positionTooltip(e) {
+            const padding = 10;
+            let left = e.clientX + 12;
+            let top = e.clientY + 12;
+            const tw = tooltip.offsetWidth;
+            const th = tooltip.offsetHeight;
+
+            if (left + tw > window.innerWidth - padding) {
+                left = e.clientX - tw - 12;
+            }
+            if (top + th > window.innerHeight - padding) {
+                top = e.clientY - th - 12;
+            }
+
+            tooltip.style.left = left + 'px';
+            tooltip.style.top = top + 'px';
+        }
+
+        function hideTooltip() {
+            tooltip.style.display = 'none';
+        }
+
+        // ============ 句子分析 ============
+        async function analyzeSentence() {
+            const input = document.getElementById('sentenceInput');
+            const btn = document.getElementById('analyzeBtn');
+            const sentence = input.value.trim();
+
+            if (!sentence) {
+                alert('请输入英语句子');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.classList.add('loading');
+            btn.textContent = '分析中...';
+
+            try {
+                const resp = await fetch(`${API_BASE}/sentence/analyze`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sentence: sentence })
+                });
+
+                const data = await resp.json();
+
+                if (!resp.ok) {
+                    alert(data.error || '分析失败');
+                    return;
+                }
+
+                currentSentence = sentence;
+                currentAnalysis = data.analysis;
+                usedColorIndex = 0;
+                typeColorMap = {};
+
+                await loadColorLibrary();
+                renderResult(currentAnalysis);
+                loadHistory();
+
+            } catch (e) {
+                alert('网络错误: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('loading');
+                btn.textContent = '🔍 分析句子';
+            }
+        }
+
+        function clearSentenceInput() {
+            document.getElementById('sentenceInput').value = '';
+            document.getElementById('resultSection').style.display = 'none';
+            document.getElementById('resultContent').innerHTML = '';
+            currentAnalysis = null;
+            currentSentence = '';
+            typeColorMap = {};
+            usedColorIndex = 0;
+        }
+
+        // ============ 结果渲染 ============
+        function renderResult(analysis) {
+            const section = document.getElementById('resultSection');
+            const content = document.getElementById('resultContent');
+            section.style.display = 'block';
+
+            let componentsHtml = '';
+            analysis.forEach((comp, idx) => {
+                const color = getColorForType(comp.type);
+                componentsHtml += `<span
+                    class="component-span"
+                    data-index="${idx}"
+                    data-type="${escapeHTML(comp.type)}"
+                    data-meaning="${escapeHTML(comp.meaning)}"
+                    data-text="${escapeHTML(comp.text)}"
+                    style="background-color: ${color};"
+                    onclick="handleComponentClick(event, ${idx})"
+                    onmouseenter="if (!isMobileDevice) showTooltip(event, '${escapeJS(comp.meaning)}')"
+                    onmouseleave="if (!isMobileDevice) hideTooltip()"
+                >${comp.text}</span>`;
+            });
+
+            // 图例
+            const legendItems = [];
+            const seenTypes = new Set();
+            analysis.forEach(comp => {
+                if (!seenTypes.has(comp.type)) {
+                    seenTypes.add(comp.type);
+                    const color = typeColorMap[comp.type];
+                    legendItems.push(`<span class="legend-item" style="background-color: ${color}; color: #1a1a2e;">${escapeHTML(comp.type)}</span>`);
+                }
+            });
+
+            content.innerHTML = `
+                <div class="sentence-result-box">
+                    <div class="components-display">${componentsHtml}</div>
+                </div>
+                <div class="legend-box">
+                    <h3>📎 图例</h3>
+                    <div class="legend-display">${legendItems.join('')}</div>
+                </div>
+            `;
+        }
+
+        // ============ 成分交互 ============
+        function handleComponentClick(e, index) {
+            if (isMobileDevice) {
+                // 移动端：点击切换提示
+                const comp = currentAnalysis[index];
+                if (tooltip.style.display === 'block' && tooltip.textContent === comp.meaning) {
+                    hideTooltip();
+                } else {
+                    showTooltip(e, comp.meaning);
+                }
+            }
+            // 悬停提示已在 onmouseenter/leave 处理
+        }
+
+        // 双击成分打开详情
+        document.addEventListener('dblclick', function(e) {
+            const span = e.target.closest('.component-span');
+            if (!span) return;
+            e.stopPropagation();
+            const index = parseInt(span.dataset.index);
+            openComponentDetail(index);
+        });
+
+        function openComponentDetail(index) {
+            const comp = currentAnalysis[index];
+            const modal = document.getElementById('componentModal');
+            const body = document.getElementById('componentModalBody');
+
+            body.innerHTML = `
+                <h3 class="component-modal-title">语法成分详情</h3>
+                <div class="component-modal-info">
+                    <p><strong>文本：</strong>${escapeHTML(comp.text)}</p>
+                    <p><strong>类型：</strong>${escapeHTML(comp.type)}</p>
+                    <p><strong>含义：</strong>${escapeHTML(comp.meaning)}</p>
+                </div>
+                <div class="component-modal-actions">
+                    <button class="edit-btn" onclick="lookupWord('${escapeJS(comp.text)}')">🔍 查词并加入单词本</button>
+                    <button class="cancel-btn" onclick="closeComponentModal()">关闭</button>
+                </div>
+            `;
+
+            modal.style.display = 'flex';
+        }
+
+        function closeComponentModal() {
+            document.getElementById('componentModal').style.display = 'none';
+        }
+
+        // ============ 查词功能 ============
+        async function lookupWord(word) {
+            try {
+                const resp = await fetch(`${API_BASE}/words`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ word: word })
+                });
+
+                const data = await resp.json();
+
+                if (resp.ok) {
+                    const meaningInfo = data.word && data.word.meaning ? formatMeaning(data.word.meaning) : '暂无释义';
+                    alert(`✅ "${data.word.word}" ${data.message}\n\n释义：${meaningInfo}`);
+                } else {
+                    alert(`❌ 查词失败：${data.error || '未知错误'}`);
+                }
+            } catch (e) {
+                alert('网络错误: ' + e.message);
+            }
+        }
+
+        function formatMeaning(meaning) {
+            if (!meaning) return '暂无释义';
+            try {
+                if (typeof meaning === 'string') {
+                    meaning = JSON.parse(meaning);
+                }
+                if (Array.isArray(meaning)) {
+                    return meaning.map(m => `${m.pos || ''} ${m.translation || ''}`.trim()).join('；');
+                }
+                if (meaning.meaning && Array.isArray(meaning.meaning)) {
+                    return meaning.meaning.map(m => `${m.pos || ''} ${m.translation || ''}`.trim()).join('；');
+                }
+                if (typeof meaning === 'object') {
+                    return JSON.stringify(meaning);
+                }
+                return String(meaning);
+            } catch (e) {
+                return String(meaning);
+            }
+        }
+
+        // ============ 历史记录 ============
+        async function loadHistory() {
+            try {
+                const resp = await fetch(`${API_BASE}/sentence/history`);
+                if (!resp.ok) {
+                    if (resp.status === 401) return;
+                    throw new Error('加载失败');
+                }
+                const sentences = await resp.json();
+                renderHistory(sentences);
+            } catch (e) {
+                console.error('加载历史记录失败:', e);
+            }
+        }
+
+        function renderHistory(sentences) {
+            const container = document.getElementById('historyList');
+            if (!sentences || sentences.length === 0) {
+                container.innerHTML = '<p class="empty-state">暂无历史记录</p>';
+                return;
+            }
+
+            container.innerHTML = sentences.map(s => {
+                const date = s.created_at ? new Date(s.created_at).toLocaleString('zh-CN') : '';
+                const preview = s.original_text.length > 80
+                    ? s.original_text.substring(0, 80) + '...'
+                    : s.original_text;
+                return `
+                    <div class="history-item">
+                        <div class="history-item-header">
+                            <span class="history-date">${date}</span>
+                            <div class="history-item-actions">
+                                <button class="history-view-btn" title="查看分析" onclick="viewHistory(${s.id})">👁️</button>
+                                <button class="history-delete-btn" title="删除" onclick="deleteHistory(${s.id})">🗑️</button>
+                            </div>
+                        </div>
+                        <p class="history-text">${escapeHTML(preview)}</p>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function viewHistory(id) {
+            try {
+                const resp = await fetch(`${API_BASE}/sentence/history`);
+                const sentences = await resp.json();
+                const found = sentences.find(s => s.id === id);
+                if (found && found.analysis_result) {
+                    currentSentence = found.original_text;
+                    currentAnalysis = found.analysis_result;
+                    usedColorIndex = 0;
+                    typeColorMap = {};
+                    await loadColorLibrary();
+                    renderResult(found.analysis_result);
+                    document.getElementById('sentenceInput').value = found.original_text;
+                    document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth' });
+                }
+            } catch (e) {
+                alert('加载失败: ' + e.message);
+            }
+        }
+
+        async function deleteHistory(id) {
+            if (!confirm('确定要删除这条记录吗？')) return;
+            try {
+                const resp = await fetch(`${API_BASE}/sentence/${id}`, { method: 'DELETE' });
+                if (resp.ok) {
+                    loadHistory();
+                } else {
+                    const data = await resp.json();
+                    alert(data.error || '删除失败');
+                }
+            } catch (e) {
+                alert('网络错误: ' + e.message);
+            }
+        }
+
+        // ============ 辅助函数 ============
+        function escapeHTML(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function escapeJS(str) {
+            return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n');
+        }
+
+        // ============ 弹窗关闭 ============
+        document.getElementById('componentModal').addEventListener('click', function(e) {
+            if (e.target === this) closeComponentModal();
+        });
+
+        // ============ 初始化 ============
+        document.addEventListener('DOMContentLoaded', function() {
+            isMobileDevice = detectMobile();
+            loadColorLibrary();
+            loadHistory();
+
+            // Ctrl+Enter 触发分析
+            document.getElementById('sentenceInput').addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    analyzeSentence();
+                }
+            });
+        });
+    </script>
+</body>
+</html>

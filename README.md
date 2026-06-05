@@ -5,7 +5,7 @@ A Flask-based web application for managing and reviewing English vocabulary. Thi
 ## ✨ Features
 
 - **Word Management**: Add, view, delete, and track your English vocabulary
-- **AI Integration**: Automatic word information retrieval using LongCat AI API
+- **AI Integration**: Automatic word information retrieval using DeepSeek AI API
 - **Smart Tracking**: Counter system to track word query frequency
 - **Responsive UI**: Modern, mobile-friendly web interface
 - **RESTful API**: Complete API for word operations
@@ -16,14 +16,14 @@ A Flask-based web application for managing and reviewing English vocabulary. Thi
 - **Backend**: Flask (Python)
 - **Frontend**: HTML5, CSS3, JavaScript
 - **Database**: SQLite
-- **AI API**: LongCat Chat API
+- **AI API**: DeepSeek Chat API
 - **Deployment**: Ready for any Python-compatible hosting
 
 ## 📋 Requirements
 
 - Python 3.7+
 - pip package manager
-- LongCat API key
+- DeepSeek API key
 
 ## 🚀 Quick Start
 
@@ -41,7 +41,7 @@ pip install -r requirements.txt
 ### 3. Configure environment variables
 ```bash
 cp ex.env .env
-# Edit .env and add your LongCat API key
+# Edit .env and add your DeepSeek API key
 ```
 
 ### 4. Run the application
@@ -57,7 +57,7 @@ Open your browser and visit: `http://localhost:5000`
 Edit the `.env` file to configure your application:
 
 ```
-LONGCAT_API_KEY=your_api_key_here
+DEEPSEEK_API_KEY=your_api_key_here
 ```
 
 ## 📖 API Documentation
@@ -139,5 +139,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- LongCat AI for providing the word information API
+- DeepSeek AI for providing the word information API
 - Flask framework for the excellent web development experience

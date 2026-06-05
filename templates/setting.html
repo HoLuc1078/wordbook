@@ -218,6 +218,36 @@
                 </tr>
             </tbody>
         </table>
+
+        <!-- 颜色库管理 -->
+        <div class="color-management" style="margin-top: 30px;">
+            <h2>🎨 颜色库管理</h2>
+            <p style="color: var(--text-light); margin-bottom: 16px; font-size: 14px;">
+                管理句子分析中使用的颜色库。相同类型的成分使用相同颜色，新类型自动分配颜色。
+            </p>
+            <ul id="colorList" class="color-list"></ul>
+            <div class="add-color-row">
+                <input type="text" id="newColorInput" class="color-input" placeholder="输入颜色值，如 #d0e6ff" maxlength="7">
+                <button class="add-btn" onclick="addColor()">➕ 添加</button>
+                <button class="reset-btn" onclick="resetColors()">🔄 恢复默认</button>
+            </div>
+            <div id="colorMsg" class="color-msg"></div>
+        </div>
+
+        <!-- 编辑颜色弹窗 -->
+        <div id="editColorModal" class="change-pwd-modal">
+            <div class="change-pwd-content">
+                <h3>✏️ 编辑颜色</h3>
+                <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+                    <div id="editColorPreview" style="width: 40px; height: 40px; border-radius: 6px; border: 1px solid var(--border-color);"></div>
+                    <input type="text" id="editColorInput" class="form-input" placeholder="#d0e6ff" maxlength="7" style="flex: 1;">
+                </div>
+                <div class="change-pwd-actions">
+                    <button class="action-btn pwd-btn" onclick="saveEditColor()">保存</button>
+                    <button class="action-btn" style="background: var(--text-light); color: var(--on-text-light);" onclick="closeEditColorModal()">取消</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- 修改密码弹窗 -->
@@ -375,10 +405,144 @@
             return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
         }
 
+        // ==================== 颜色库管理 ====================
+        let editColorIndex = -1;
+
+        async function loadColors() {
+            try {
+                const resp = await fetch(`${API_BASE}/settings/colors`);
+                if (resp.ok) {
+                    const data = await resp.json();
+                    renderColors(data.colors);
+                }
+            } catch (e) {
+                console.error('加载颜色库失败:', e);
+            }
+        }
+
+        function renderColors(colors) {
+            const list = document.getElementById('colorList');
+            if (!colors || colors.length === 0) {
+                list.innerHTML = '<li style="color: var(--text-light); padding: 12px;">暂无颜色</li>';
+                return;
+            }
+            list.innerHTML = colors.map((c, i) => `
+                <li class="color-item">
+                    <span class="color-swatch" style="background-color: ${c};"></span>
+                    <span class="color-value">${escapeHtml(c)}</span>
+                    <div class="color-actions">
+                        <button class="color-btn edit" onclick="openEditColor(${i}, '${c}')">编辑</button>
+                        <button class="color-btn delete" onclick="deleteColor(${i})">删除</button>
+                    </div>
+                </li>
+            `).join('');
+        }
+
+        async function addColor() {
+            const input = document.getElementById('newColorInput');
+            const color = input.value.trim();
+            if (!color) {
+                showColorMsg('请输入颜色值', 'error');
+                return;
+            }
+            if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
+                showColorMsg('颜色格式不正确，请使用 #RRGGBB 格式', 'error');
+                return;
+            }
+
+            try {
+                const resp = await fetch(`${API_BASE}/settings/colors`);
+                const data = await resp.json();
+                const colors = data.colors || [];
+                colors.push(color);
+                await saveColors(colors);
+                input.value = '';
+            } catch (e) {
+                showColorMsg('添加失败: ' + e.message, 'error');
+            }
+        }
+
+        async function saveColors(colors) {
+            const resp = await fetch(`${API_BASE}/settings/colors`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ colors: colors })
+            });
+            const data = await resp.json();
+            if (resp.ok) {
+                renderColors(data.colors);
+                showColorMsg('颜色库已保存', 'success');
+            } else {
+                showColorMsg(data.error || '保存失败', 'error');
+            }
+        }
+
+        function openEditColor(index, oldColor) {
+            editColorIndex = index;
+            document.getElementById('editColorPreview').style.backgroundColor = oldColor;
+            document.getElementById('editColorInput').value = oldColor;
+            document.getElementById('editColorModal').classList.add('show');
+        }
+
+        function closeEditColorModal() {
+            document.getElementById('editColorModal').classList.remove('show');
+            editColorIndex = -1;
+        }
+
+        async function saveEditColor() {
+            const newColor = document.getElementById('editColorInput').value.trim();
+            if (!/^#[0-9A-Fa-f]{6}$/.test(newColor)) {
+                alert('颜色格式不正确');
+                return;
+            }
+            const resp = await fetch(`${API_BASE}/settings/colors`);
+            const data = await resp.json();
+            const colors = data.colors || [];
+            colors[editColorIndex] = newColor;
+            await saveColors(colors);
+            closeEditColorModal();
+        }
+
+        async function deleteColor(index) {
+            if (!confirm('确定删除这个颜色吗？')) return;
+            const resp = await fetch(`${API_BASE}/settings/colors`);
+            const data = await resp.json();
+            const colors = data.colors || [];
+            colors.splice(index, 1);
+            await saveColors(colors);
+        }
+
+        async function resetColors() {
+            if (!confirm('确定恢复默认颜色库吗？')) return;
+            try {
+                const resp = await fetch(`${API_BASE}/settings/colors/reset`, { method: 'POST' });
+                const data = await resp.json();
+                if (resp.ok) {
+                    renderColors(data.colors);
+                    showColorMsg('颜色库已恢复默认', 'success');
+                } else {
+                    showColorMsg(data.error || '重置失败', 'error');
+                }
+            } catch (e) {
+                showColorMsg('重置失败: ' + e.message, 'error');
+            }
+        }
+
+        function showColorMsg(msg, type) {
+            const el = document.getElementById('colorMsg');
+            el.textContent = msg;
+            el.className = 'color-msg ' + type;
+            setTimeout(() => { el.className = 'color-msg'; }, 3000);
+        }
+
         // 初始化
         loadUsers();
+        loadColors();
         document.getElementById('changePwdModal').addEventListener('click', function(e) {
             if (e.target === this) closeChangePwdModal();
+        });
+        document.getElementById('editColorModal').addEventListener('click', function(e) {
+            if (e.target === this) closeEditColorModal();
         });
     </script>
 </body>

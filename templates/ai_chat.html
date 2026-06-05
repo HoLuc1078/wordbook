@@ -386,22 +386,29 @@
     </div>
 
     <div class="ai-chat-container">
+        <!-- 顶部导航 -->
+        <div class="top-nav">
+            <a href="/" class="nav-btn">📚 单词本</a>
+            <a href="/ai-chat" class="nav-btn active">🤖 AI 对话</a>
+            <a href="/sentence" class="nav-btn">📝 句子分析</a>
+        </div>
+
         <div class="ai-chat-header">
-            <h1>🤖 与 LongCat AI 对话</h1>
+            <h1>🤖 与 DeepSeek AI 对话</h1>
             <a href="{{ url_for('index') }}" class="back-btn">← 返回单词本</a>
         </div>
 
         <div class="chat-main">
             <div class="chat-controls">
                 <select id="aiModelSelect" class="model-select">
-                    <option value="LongCat-2.0-Preview" selected>LongCat-2.0-Preview (高性能Agentic)</option>
+                    <option value="deepseek-v4-pro" selected>DeepSeek-V4-Pro (高性能)</option>
                 </select>
                 <button class="clear-chat-btn" onclick="clearChatHistory()">清空记录</button>
             </div>
 
             <div class="chat-messages-container" id="chatMessages">
                 <div class="chat-welcome">
-                    <p>你好！我是 LongCat AI，有什么可以帮助你的吗？</p>
+                    <p>你好！我是 DeepSeek AI，有什么可以帮助你的吗？</p>
                 </div>
             </div>
 
@@ -510,7 +517,7 @@
             if (chatHistory.length === 0) {
                 const welcomeDiv = document.createElement('div');
                 welcomeDiv.className = 'chat-welcome';
-                welcomeDiv.innerHTML = '<p>你好！我是 LongCat AI，有什么可以帮助你的吗？</p>';
+                welcomeDiv.innerHTML = '<p>你好！我是 DeepSeek AI，有什么可以帮助你的吗？</p>';
                 chatMessages.appendChild(welcomeDiv);
                 return;
             }
