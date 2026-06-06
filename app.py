@@ -1347,16 +1347,67 @@ def analyze_sentence():
             "Content-Type": "application/json"
         }
 
-        prompt = f"""请分析以下英语句子的语法成分，返回严格的 JSON 数组格式，每个元素包含 text（成分文本）、type（成分类型名称）和 meaning（该成分在此句中的语法含义解释）。
+        prompt = f"""请严格按照以下格式分析英语句子的语法成分，返回 JSON 对象（不要包含任何其他文字）：
 
-句子的每个单词或词组都必须被包含在一个成分中，不能遗漏任何部分。
+{{
+  "translation": "整句的中文翻译",
+  "components": [
+    {{"text": "成分文本", "type": "成分类型", "meaning": "该成分在此句中的语法含义解释"}},
+    ...
+  ]
+}}
 
-成分类型 type 不要使用固定命名，而是根据句子实际情况灵活生成，例如"主语"、"谓语"、"宾语"、"定语"、"状语"、"补语"、"表语"、"同位语"、"连词"、"介词短语"、"不定式"、"分词短语"等。
+分析规则：
+1. 必须将句子拆分为最细粒度的语法成分，每个单词或词组都必须被独立标注
+2. 修饰性成分（定语、状语、补语、同位语等）必须全部独立拆分出来，不要合并到主干成分中
+3. type 根据该成分的真实语法角色灵活命名，例如：
+   - 主干：主语、谓语动词、宾语、表语、系动词、间接宾语、直接宾语
+   - 修饰：定语、状语、补语、同位语
+   - 功能词：冠词、介词、连词、助动词、情态动词
+   - 短语：介词短语、不定式短语、分词短语、名词短语
+   - 其他：标点、感叹词、插入语
+4. meaning 要简洁清晰地说明该成分的语法功能
+
+示例输入：The little boy quickly ran to the store.
+示例输出：
+{{
+  "translation": "那个小男孩快速跑向了商店。",
+  "components": [
+    {{"text": "The", "type": "冠词", "meaning": "定冠词，修饰主语boy"}},
+    {{"text": "little", "type": "定语", "meaning": "形容词作前置定语，修饰主语boy"}},
+    {{"text": "boy", "type": "主语", "meaning": "句子主语，表示动作的执行者"}},
+    {{"text": "quickly", "type": "状语", "meaning": "副词作方式状语，修饰谓语动词ran"}},
+    {{"text": "ran", "type": "谓语动词", "meaning": "谓语动词，表示跑的动作"}},
+    {{"text": "to", "type": "介词", "meaning": "介词，引导方向状语"}},
+    {{"text": "the", "type": "冠词", "meaning": "定冠词，修饰名词store"}},
+    {{"text": "store", "type": "介词宾语", "meaning": "介词to的宾语，表示方向目的地"}},
+    {{"text": ".", "type": "标点", "meaning": "句末标点，表示陈述句结束"}}
+  ]
+}}
+
+另一个示例输入：She is a very talented singer who won many awards.
+示例输出：
+{{
+  "translation": "她是一位赢得许多奖项的非常有才华的歌手。",
+  "components": [
+    {{"text": "She", "type": "主语", "meaning": "句子主语，第三人称代词"}},
+    {{"text": "is", "type": "系动词", "meaning": "系动词，连接主语和表语"}},
+    {{"text": "a", "type": "冠词", "meaning": "不定冠词，修饰singer"}},
+    {{"text": "very", "type": "状语", "meaning": "副词作程度状语，修饰形容词talented"}},
+    {{"text": "talented", "type": "定语", "meaning": "形容词作前置定语，修饰singer"}},
+    {{"text": "singer", "type": "表语", "meaning": "名词作表语，说明主语的身份"}},
+    {{"text": "who", "type": "关系代词", "meaning": "关系代词，引导定语从句，指代singer"}},
+    {{"text": "won", "type": "谓语动词", "meaning": "定语从句中的谓语动词"}},
+    {{"text": "many", "type": "定语", "meaning": "形容词作定语，修饰awards"}},
+    {{"text": "awards", "type": "宾语", "meaning": "定语从句中的宾语"}},
+    {{"text": ".", "type": "标点", "meaning": "句末标点"}}
+  ]
+}}
 
 请分析以下句子：
 {sentence}
 
-只返回 JSON 数组，不要包含任何其他文字。"""
+只返回 JSON 对象，不要包含任何其他文字。"""
 
         payload = {
             "model": DEEPSEEK_MODEL,
@@ -1388,17 +1439,27 @@ def analyze_sentence():
             content = content[:-3]
         content = content.strip()
 
-        analysis = json.loads(content)
+        analysis_data = json.loads(content)
 
-        if not isinstance(analysis, list):
-            return jsonify({'error': 'AI 返回格式不正确，应为数组'}), 500
+        # 支持两种格式：新格式 {"translation": "...", "components": [...]}；旧格式 [...]（兼容）
+        if isinstance(analysis_data, dict) and 'components' in analysis_data:
+            translation = analysis_data.get('translation', '')
+            components = analysis_data['components']
+        elif isinstance(analysis_data, list):
+            translation = ''
+            components = analysis_data
+        else:
+            return jsonify({'error': 'AI 返回格式不正确'}), 500
+
+        # 存储完整结果（含翻译）
+        save_data = {'translation': translation, 'components': components}
 
         user_id = session['user_id']
         with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO sentences (user_id, original_text, analysis_result) VALUES (?, ?, ?)",
-                (user_id, sentence, json.dumps(analysis, ensure_ascii=False))
+                (user_id, sentence, json.dumps(save_data, ensure_ascii=False))
             )
             conn.commit()
             sentence_id = cursor.lastrowid
@@ -1406,7 +1467,8 @@ def analyze_sentence():
         return jsonify({
             'id': sentence_id,
             'sentence': sentence,
-            'analysis': analysis
+            'translation': translation,
+            'analysis': components
         }), 200
 
     except json.JSONDecodeError:

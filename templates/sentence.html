@@ -285,10 +285,25 @@
             </div>
         </div>
 
-        <!-- 分析结果区域 -->
-        <div id="resultSection" class="sentence-result-section" style="display: none;">
-            <h2>📋 分析结果</h2>
-            <div id="resultContent"></div>
+        <!-- 分析结果弹窗 -->
+        <div id="analysisModal" class="modal" style="display: none;">
+            <div class="modal-content" style="max-width: 800px; max-height: 85vh;">
+                <span class="close-btn" onclick="closeAnalysisModal()">&times;</span>
+                <h3 style="color: var(--primary-color); font-size: 1.2em; margin-bottom: 16px;">
+                    📋 分析结果
+                </h3>
+                <div id="analysisTranslation" style="margin-bottom: 16px; padding: 12px 16px; background: var(--background-color); border-radius: 8px; border-left: 4px solid var(--primary-color);">
+                    <span style="color: var(--text-light); font-size: 13px;">中文翻译：</span>
+                    <span id="analysisTranslationText" style="color: var(--text-color); font-size: 15px;"></span>
+                </div>
+                <div class="sentence-result-box" style="margin-bottom: 12px;">
+                    <div id="analysisComponents" class="components-display"></div>
+                </div>
+                <div class="legend-box">
+                    <h3>📎 图例</h3>
+                    <div id="analysisLegend" class="legend-display"></div>
+                </div>
+            </div>
         </div>
 
         <!-- 历史记录 -->
@@ -316,6 +331,7 @@
         const API_BASE = '/api';
         let currentAnalysis = null;
         let currentSentence = '';
+        let currentTranslation = '';
         let typeColorMap = {};
         let colorLibrary = [];
         let usedColorIndex = 0;
@@ -414,6 +430,7 @@
 
                 currentSentence = sentence;
                 currentAnalysis = data.analysis;
+                currentTranslation = data.translation || '';
                 usedColorIndex = 0;
                 typeColorMap = {};
 
@@ -432,19 +449,33 @@
 
         function clearSentenceInput() {
             document.getElementById('sentenceInput').value = '';
-            document.getElementById('resultSection').style.display = 'none';
-            document.getElementById('resultContent').innerHTML = '';
+            closeAnalysisModal();
             currentAnalysis = null;
             currentSentence = '';
+            currentTranslation = '';
             typeColorMap = {};
             usedColorIndex = 0;
         }
 
-        // ============ 结果渲染 ============
+        // ============ 分析结果弹窗 ============
+        function closeAnalysisModal() {
+            document.getElementById('analysisModal').style.display = 'none';
+        }
+
         function renderResult(analysis) {
-            const section = document.getElementById('resultSection');
-            const content = document.getElementById('resultContent');
-            section.style.display = 'block';
+            const modal = document.getElementById('analysisModal');
+            const translationText = document.getElementById('analysisTranslationText');
+            const translationBox = document.getElementById('analysisTranslation');
+            const componentsDiv = document.getElementById('analysisComponents');
+            const legendDiv = document.getElementById('analysisLegend');
+
+            // 翻译
+            if (currentTranslation) {
+                translationText.textContent = currentTranslation;
+                translationBox.style.display = 'block';
+            } else {
+                translationBox.style.display = 'none';
+            }
 
             let componentsHtml = '';
             analysis.forEach((comp, idx) => {
@@ -472,16 +503,14 @@
                     legendItems.push(`<span class="legend-item" style="background-color: ${color}; color: #1a1a2e;">${escapeHTML(comp.type)}</span>`);
                 }
             });
+            legendDiv.innerHTML = legendItems.join('');
 
-            content.innerHTML = `
-                <div class="sentence-result-box">
-                    <div class="components-display">${componentsHtml}</div>
-                </div>
-                <div class="legend-box">
-                    <h3>📎 图例</h3>
-                    <div class="legend-display">${legendItems.join('')}</div>
-                </div>
-            `;
+            componentsDiv.innerHTML = componentsHtml;
+
+            modal.style.display = 'flex';
+            // 滚动弹窗到顶部
+            const modalContent = modal.querySelector('.modal-content');
+            if (modalContent) modalContent.scrollTop = 0;
         }
 
         // ============ 成分交互 ============
@@ -624,13 +653,19 @@
                 const found = sentences.find(s => s.id === id);
                 if (found && found.analysis_result) {
                     currentSentence = found.original_text;
-                    currentAnalysis = found.analysis_result;
+                    // 兼容新旧存储格式
+                    if (Array.isArray(found.analysis_result)) {
+                        currentAnalysis = found.analysis_result;
+                        currentTranslation = '';
+                    } else {
+                        currentAnalysis = found.analysis_result.components || [];
+                        currentTranslation = found.analysis_result.translation || '';
+                    }
                     usedColorIndex = 0;
                     typeColorMap = {};
                     await loadColorLibrary();
-                    renderResult(found.analysis_result);
+                    renderResult(currentAnalysis);
                     document.getElementById('sentenceInput').value = found.original_text;
-                    document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth' });
                 }
             } catch (e) {
                 alert('加载失败: ' + e.message);
@@ -666,6 +701,9 @@
         // ============ 弹窗关闭 ============
         document.getElementById('componentModal').addEventListener('click', function(e) {
             if (e.target === this) closeComponentModal();
+        });
+        document.getElementById('analysisModal').addEventListener('click', function(e) {
+            if (e.target === this) closeAnalysisModal();
         });
 
         // ============ 初始化 ============
