@@ -193,6 +193,300 @@
             padding: 40px;
             color: var(--text-light);
         }
+
+        /* ==================== 颜色库管理 ==================== */
+        .color-management {
+            margin-top: 30px;
+            background: var(--card-background);
+            border-radius: 12px;
+            padding: 28px;
+            box-shadow: var(--shadow);
+        }
+
+        .color-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .color-header h2 {
+            color: var(--primary-color);
+            font-size: 1.3em;
+            margin: 0;
+        }
+
+        .color-header-desc {
+            color: var(--text-light);
+            font-size: 13px;
+            margin: 0 0 20px 0;
+            line-height: 1.5;
+        }
+
+        .preset-group {
+            display: flex;
+            gap: 8px;
+            background: var(--background-color);
+            padding: 4px;
+            border-radius: 8px;
+        }
+
+        .preset-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.25s;
+            background: transparent;
+            color: var(--text-light);
+        }
+
+        .preset-btn:hover {
+            color: var(--text-color);
+        }
+
+        .preset-btn.active {
+            background: var(--primary-color);
+            color: var(--on-primary);
+        }
+
+        /* 颜色卡片网格 */
+        .color-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 14px;
+            margin-bottom: 20px;
+        }
+
+        .color-card {
+            background: var(--background-color);
+            border-radius: 10px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+            transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+        }
+
+        .color-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-hover);
+            border-color: var(--primary-color);
+        }
+
+        .color-card-swatch {
+            height: 64px;
+            position: relative;
+            transition: filter 0.2s;
+        }
+
+        .color-card:hover .color-card-swatch {
+            filter: brightness(0.95);
+        }
+
+        .color-card-body {
+            padding: 12px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .color-card-value {
+            font-family: 'Consolas', 'Courier New', 'Fira Code', monospace;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-color);
+            letter-spacing: 0.5px;
+        }
+
+        .color-card-actions {
+            display: flex;
+            gap: 4px;
+            opacity: 0.6;
+            transition: opacity 0.2s;
+        }
+
+        .color-card:hover .color-card-actions {
+            opacity: 1;
+        }
+
+        .color-card-btn {
+            width: 30px;
+            height: 30px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            background: var(--border-color);
+        }
+
+        .color-card-btn:hover {
+            background: var(--primary-color);
+            color: var(--on-primary);
+        }
+
+        .color-card-btn.delete:hover {
+            background: var(--danger-color);
+            color: var(--on-danger);
+        }
+
+        /* 添加颜色区域 */
+        .add-color-section {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .color-input-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+            min-width: 220px;
+            background: var(--background-color);
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            padding: 6px 10px;
+            transition: border-color 0.25s;
+        }
+
+        .color-input-wrapper:focus-within {
+            border-color: var(--primary-color);
+        }
+
+        .color-input-preview {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+
+        .color-input-field {
+            flex: 1;
+            border: none;
+            background: transparent;
+            color: var(--text-color);
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 14px;
+            outline: none;
+            padding: 6px 0;
+        }
+
+        .color-input-field::placeholder {
+            color: var(--text-light);
+        }
+
+        .add-color-btn {
+            padding: 10px 20px;
+            background: var(--secondary-color);
+            color: var(--on-secondary);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .add-color-btn:hover {
+            background: var(--secondary-hover);
+            transform: translateY(-1px);
+        }
+
+        .reset-colors-btn {
+            padding: 10px 20px;
+            background: var(--text-light);
+            color: var(--on-text-light);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .reset-colors-btn:hover {
+            background: var(--neutral-hover);
+        }
+
+        /* 消息提示 */
+        .color-msg {
+            margin-top: 14px;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            display: none;
+            animation: fadeInUp 0.3s ease;
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .color-msg.success {
+            display: block;
+            background: #e8f5e9;
+            color: #2e7d32;
+            border: 1px solid #a5d6a7;
+        }
+
+        .color-msg.error {
+            display: block;
+            background: var(--error-bg);
+            color: var(--error-text);
+            border: 1px solid var(--error-text);
+        }
+
+        [data-theme="dark"] .color-msg.success {
+            background: #1b3a1b;
+            color: #81c784;
+            border-color: #2e7d32;
+        }
+
+        /* 空状态 */
+        .color-empty {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-light);
+            font-size: 14px;
+        }
+
+        /* 响应式 */
+        @media (max-width: 768px) {
+            .color-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .color-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .add-color-section {
+                flex-direction: column;
+            }
+            .add-color-btn, .reset-colors-btn {
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .color-grid {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
@@ -220,30 +514,43 @@
         </table>
 
         <!-- 颜色库管理 -->
-        <div class="color-management" style="margin-top: 30px;">
-            <h2>🎨 颜色库管理</h2>
-            <p style="color: var(--text-light); margin-bottom: 16px; font-size: 14px;">
+        <div class="color-management">
+            <div class="color-header">
+                <h2>🎨 颜色库管理</h2>
+                <div class="preset-group">
+                    <button class="preset-btn active" id="presetLightBtn" onclick="applyPreset('light')">☀️ 浅色预设</button>
+                    <button class="preset-btn" id="presetDarkBtn" onclick="applyPreset('dark')">🌙 深色预设</button>
+                </div>
+            </div>
+            <p class="color-header-desc">
                 管理句子分析中使用的颜色库。相同类型的成分使用相同颜色，新类型自动分配颜色。
+                <br>预设提供适配浅色/深色主题的颜色方案，你也可以自由增删改颜色。
             </p>
-            <ul id="colorList" class="color-list"></ul>
-            <div class="add-color-row">
-                <input type="text" id="newColorInput" class="color-input" placeholder="输入颜色值，如 #d0e6ff" maxlength="7">
-                <button class="add-btn" onclick="addColor()">➕ 添加</button>
-                <button class="reset-btn" onclick="resetColors()">🔄 恢复默认</button>
+            <div id="colorGrid" class="color-grid"></div>
+            <div class="add-color-section">
+                <div class="color-input-wrapper">
+                    <div id="newColorPreview" class="color-input-preview" style="background-color: #d0e6ff;"></div>
+                    <input type="text" id="newColorInput" class="color-input-field" placeholder="输入颜色值，如 #d0e6ff" maxlength="7">
+                </div>
+                <button class="add-color-btn" onclick="addColor()">➕ 添加颜色</button>
+                <button class="reset-colors-btn" onclick="resetColors()">🔄 恢复默认</button>
             </div>
             <div id="colorMsg" class="color-msg"></div>
         </div>
 
         <!-- 编辑颜色弹窗 -->
         <div id="editColorModal" class="change-pwd-modal">
-            <div class="change-pwd-content">
+            <div class="change-pwd-content" style="max-width: 360px;">
                 <h3>✏️ 编辑颜色</h3>
-                <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
-                    <div id="editColorPreview" style="width: 40px; height: 40px; border-radius: 6px; border: 1px solid var(--border-color);"></div>
-                    <input type="text" id="editColorInput" class="form-input" placeholder="#d0e6ff" maxlength="7" style="flex: 1;">
+                <div class="form-group" style="display: flex; align-items: center; gap: 12px;">
+                    <div id="editColorPreview" style="width: 48px; height: 48px; border-radius: 10px; border: 2px solid var(--border-color); flex-shrink: 0;"></div>
+                    <div style="flex: 1;">
+                        <label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 13px; color: var(--text-color);">颜色值（十六进制）</label>
+                        <input type="text" id="editColorInput" class="form-input" placeholder="#d0e6ff" maxlength="7">
+                    </div>
                 </div>
                 <div class="change-pwd-actions">
-                    <button class="action-btn pwd-btn" onclick="saveEditColor()">保存</button>
+                    <button class="action-btn pwd-btn" onclick="saveEditColor()">💾 保存</button>
                     <button class="action-btn" style="background: var(--text-light); color: var(--on-text-light);" onclick="closeEditColorModal()">取消</button>
                 </div>
             </div>
@@ -407,6 +714,12 @@
 
         // ==================== 颜色库管理 ====================
         let editColorIndex = -1;
+        let currentPreset = 'light';
+
+        const PRESETS = {
+            light: ['#d0e6ff', '#d4f0d4', '#ffe0b2', '#f3e5f5', '#fff9c4', '#e0f7fa'],
+            dark:  ['#8ab4e0', '#8cd4a0', '#f0c080', '#c8a0e0', '#e8d880', '#88d0d8']
+        };
 
         async function loadColors() {
             try {
@@ -421,22 +734,38 @@
         }
 
         function renderColors(colors) {
-            const list = document.getElementById('colorList');
+            const grid = document.getElementById('colorGrid');
             if (!colors || colors.length === 0) {
-                list.innerHTML = '<li style="color: var(--text-light); padding: 12px;">暂无颜色</li>';
+                grid.innerHTML = '<div class="color-empty">暂无颜色，请添加或选择预设</div>';
                 return;
             }
-            list.innerHTML = colors.map((c, i) => `
-                <li class="color-item">
-                    <span class="color-swatch" style="background-color: ${c};"></span>
-                    <span class="color-value">${escapeHtml(c)}</span>
-                    <div class="color-actions">
-                        <button class="color-btn edit" onclick="openEditColor(${i}, '${c}')">编辑</button>
-                        <button class="color-btn delete" onclick="deleteColor(${i})">删除</button>
+            grid.innerHTML = colors.map((c, i) => `
+                <div class="color-card">
+                    <div class="color-card-swatch" style="background-color: ${c};"></div>
+                    <div class="color-card-body">
+                        <span class="color-card-value">${escapeHtml(c)}</span>
+                        <div class="color-card-actions">
+                            <button class="color-card-btn" title="编辑" onclick="openEditColor(${i}, '${c}')">✏️</button>
+                            <button class="color-card-btn delete" title="删除" onclick="deleteColor(${i})">🗑️</button>
+                        </div>
                     </div>
-                </li>
+                </div>
             `).join('');
         }
+
+        // 实时预览输入颜色
+        document.addEventListener('DOMContentLoaded', function() {
+            const input = document.getElementById('newColorInput');
+            const preview = document.getElementById('newColorPreview');
+            if (input && preview) {
+                input.addEventListener('input', function() {
+                    const val = this.value.trim();
+                    if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+                        preview.style.backgroundColor = val;
+                    }
+                });
+            }
+        });
 
         async function addColor() {
             const input = document.getElementById('newColorInput');
@@ -457,6 +786,7 @@
                 colors.push(color);
                 await saveColors(colors);
                 input.value = '';
+                document.getElementById('newColorPreview').style.backgroundColor = '#d0e6ff';
             } catch (e) {
                 showColorMsg('添加失败: ' + e.message, 'error');
             }
@@ -492,7 +822,7 @@
         async function saveEditColor() {
             const newColor = document.getElementById('editColorInput').value.trim();
             if (!/^#[0-9A-Fa-f]{6}$/.test(newColor)) {
-                alert('颜色格式不正确');
+                alert('颜色格式不正确，请使用 #RRGGBB 格式');
                 return;
             }
             const resp = await fetch(`${API_BASE}/settings/colors`);
@@ -519,6 +849,8 @@
                 const data = await resp.json();
                 if (resp.ok) {
                     renderColors(data.colors);
+                    currentPreset = 'light';
+                    updatePresetButtons();
                     showColorMsg('颜色库已恢复默认', 'success');
                 } else {
                     showColorMsg(data.error || '重置失败', 'error');
@@ -526,6 +858,30 @@
             } catch (e) {
                 showColorMsg('重置失败: ' + e.message, 'error');
             }
+        }
+
+        async function applyPreset(type) {
+            const colors = PRESETS[type];
+            if (!colors) return;
+            const resp = await fetch(`${API_BASE}/settings/colors`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ colors: colors })
+            });
+            const data = await resp.json();
+            if (resp.ok) {
+                renderColors(data.colors);
+                currentPreset = type;
+                updatePresetButtons();
+                showColorMsg(type === 'light' ? '已切换为浅色主题预设' : '已切换为深色主题预设', 'success');
+            } else {
+                showColorMsg(data.error || '切换失败', 'error');
+            }
+        }
+
+        function updatePresetButtons() {
+            document.getElementById('presetLightBtn').classList.toggle('active', currentPreset === 'light');
+            document.getElementById('presetDarkBtn').classList.toggle('active', currentPreset === 'dark');
         }
 
         function showColorMsg(msg, type) {
