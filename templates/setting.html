@@ -518,13 +518,12 @@
             <div class="color-header">
                 <h2>🎨 颜色库管理</h2>
                 <div class="preset-group">
-                    <button class="preset-btn active" id="presetLightBtn" onclick="applyPreset('light')">☀️ 浅色预设</button>
-                    <button class="preset-btn" id="presetDarkBtn" onclick="applyPreset('dark')">🌙 深色预设</button>
+                    <button class="preset-btn active" id="presetDarkBtn" onclick="applyPreset('dark')">🌙 深色预设</button>
                 </div>
             </div>
             <p class="color-header-desc">
                 管理句子分析中使用的颜色库。相同类型的成分使用相同颜色，新类型自动分配颜色。
-                <br>预设提供适配浅色/深色主题的颜色方案，你也可以自由增删改颜色。
+                <br>你可以通过深色预设快速填充，也可以自由增删改颜色。
             </p>
             <div id="colorGrid" class="color-grid"></div>
             <div class="add-color-section">
@@ -714,11 +713,10 @@
 
         // ==================== 颜色库管理 ====================
         let editColorIndex = -1;
-        let currentPreset = 'light';
+        let currentPreset = 'dark';
 
         const PRESETS = {
-            light: ['#d0e6ff', '#d4f0d4', '#ffe0b2', '#f3e5f5', '#fff9c4', '#e0f7fa'],
-            dark:  ['#8ab4e0', '#8cd4a0', '#f0c080', '#c8a0e0', '#e8d880', '#88d0d8']
+            dark: ['#8ab4e0', '#8cd4a0', '#f0c080', '#c8a0e0', '#e8d880', '#88d0d8']
         };
 
         async function loadColors() {
@@ -849,7 +847,7 @@
                 const data = await resp.json();
                 if (resp.ok) {
                     renderColors(data.colors);
-                    currentPreset = 'light';
+                    currentPreset = 'dark';
                     updatePresetButtons();
                     showColorMsg('颜色库已恢复默认', 'success');
                 } else {
@@ -873,14 +871,13 @@
                 renderColors(data.colors);
                 currentPreset = type;
                 updatePresetButtons();
-                showColorMsg(type === 'light' ? '已切换为浅色主题预设' : '已切换为深色主题预设', 'success');
+                showColorMsg('已切换为深色主题预设', 'success');
             } else {
                 showColorMsg(data.error || '切换失败', 'error');
             }
         }
 
         function updatePresetButtons() {
-            document.getElementById('presetLightBtn').classList.toggle('active', currentPreset === 'light');
             document.getElementById('presetDarkBtn').classList.toggle('active', currentPreset === 'dark');
         }
 
