@@ -233,6 +233,15 @@
             background: #1b3a1b;
             color: #81c784;
         }
+
+        .history-item {
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.15s;
+        }
+        .history-item:hover {
+            background-color: var(--background-color);
+            transform: translateX(4px);
+        }
     </style>
 </head>
 <body>
@@ -303,6 +312,9 @@
                     <h3>📎 图例</h3>
                     <div id="analysisLegend" class="legend-display"></div>
                 </div>
+                <div style="margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end;">
+                    <button class="color-btn delete" onclick="deleteFromModal()" style="font-size:13px;">🗑️ 删除此记录</button>
+                </div>
             </div>
         </div>
 
@@ -331,6 +343,7 @@
         const API_BASE = '/api';
         let currentAnalysis = null;
         let currentSentence = '';
+        let currentSentenceId = null;
         let currentTranslation = '';
         let typeColorMap = {};
         let colorLibrary = [];
@@ -460,6 +473,24 @@
         // ============ 分析结果弹窗 ============
         function closeAnalysisModal() {
             document.getElementById('analysisModal').style.display = 'none';
+            currentSentenceId = null;
+        }
+
+        async function deleteFromModal() {
+            if (!currentSentenceId) return;
+            if (!confirm('确定要删除这条分析记录吗？')) return;
+            try {
+                const resp = await fetch(`${API_BASE}/sentence/${currentSentenceId}`, { method: 'DELETE' });
+                if (resp.ok) {
+                    closeAnalysisModal();
+                    loadHistory();
+                } else {
+                    const data = await resp.json();
+                    alert(data.error || '删除失败');
+                }
+            } catch (e) {
+                alert('网络错误: ' + e.message);
+            }
         }
 
         function renderResult(analysis) {
@@ -632,13 +663,9 @@
                     ? s.original_text.substring(0, 80) + '...'
                     : s.original_text;
                 return `
-                    <div class="history-item">
+                    <div class="history-item" onclick="viewHistory(${s.id})" style="cursor:pointer;" title="点击查看分析">
                         <div class="history-item-header">
                             <span class="history-date">${date}</span>
-                            <div class="history-item-actions">
-                                <button class="history-view-btn" title="查看分析" onclick="viewHistory(${s.id})">👁️</button>
-                                <button class="history-delete-btn" title="删除" onclick="deleteHistory(${s.id})">🗑️</button>
-                            </div>
                         </div>
                         <p class="history-text">${escapeHTML(preview)}</p>
                     </div>
@@ -652,6 +679,7 @@
                 const sentences = await resp.json();
                 const found = sentences.find(s => s.id === id);
                 if (found && found.analysis_result) {
+                    currentSentenceId = found.id;
                     currentSentence = found.original_text;
                     // 兼容新旧存储格式
                     if (Array.isArray(found.analysis_result)) {
